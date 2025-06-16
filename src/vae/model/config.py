@@ -29,18 +29,46 @@ class DecoderConfig():
 
 @dataclass
 class VAEConfig:
-    # shared across VAE variants
-    latent_dim:    int   = 64
-    lr:            float = 5e-4
-    batch_size:    int   = 256
-    max_epochs:    int   = 150
-    warmup_epochs: int   = 30
-    patience:      int   = 10
-    device:        str   = "cuda"
+    latent_dim:    int     = 64
+    img_size:      int     = 64
 
-    encoder: EncoderConfig = field(default_factory=EncoderConfig)
-    decoder: DecoderConfig = field(default_factory=DecoderConfig)
+    beta:         float   = 0.8
+    free_nats:    float   = 1.0
+    gamma:        float   = 1000.0
+    C_start:      float   = 0.0
+    C_stop:       float   = 1.0
+    C_max:        float   = 25.0
+    device:       str     = "cuda"
 
-    # β for β-VAE; plain VAE will ignore this (β=1)
-    beta:        float = 0.8
-    free_nats:   float = 1.0
+    encoder:       EncoderConfig = field(default_factory=EncoderConfig)
+    decoder:       DecoderConfig = field(default_factory=DecoderConfig)
+
+
+
+@dataclass
+class TrainConfig:
+    experiment_name:  str   = "vae_experiment"
+    project_name:     str   = "vae_project"
+    data_yaml:        str   = "data.yaml"
+
+    lr:           float   = 5e-4
+    batch_size:   int     = 256
+    max_epochs:   int     = 150
+    warmup_epochs:int     = 30
+    patience:     int     = 10
+
+    scheduler:        str   = "plateau"  # or "cosine"
+    scheduler_patience:int   = 5
+    scheduler_factor: float = 0.5
+    min_lr:           float = 1e-6
+
+    num_workers:      int   = 4
+    pin_memory:       bool  = True
+
+    device:           str   = "auto"
+    save_period:      int   = 1
+
+    def __post_init__(self):
+        if self.device == "auto":
+            import torch
+            self.device = "cuda" if torch.cuda.is_available() else "cpu"

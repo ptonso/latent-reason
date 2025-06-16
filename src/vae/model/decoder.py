@@ -52,7 +52,7 @@ class Decoder(BaseVAE):
                                           cfg.kernels[0],
                                           cfg.strides[0],
                                           cfg.paddings[0]))
-        dlayers.append(nn.Tanh())
+        # dlayers.append(nn.Tanh())
         self.deconv = nn.Sequential(*dlayers)
 
         self.out_height = out_height

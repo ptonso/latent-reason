@@ -2,6 +2,7 @@
 __pycache__*
 
 data/*
+runs/*
 checkpoints/*
 paper/*
 models/*

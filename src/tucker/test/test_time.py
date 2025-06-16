@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from typing import Tuple, List
 
 from src.logger import setup_logger
-from svd_forward import *
+from src.tucker.svd_forward import *
 
 
 
