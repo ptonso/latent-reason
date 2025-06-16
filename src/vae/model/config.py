@@ -1,6 +1,13 @@
 from dataclasses import dataclass, field
 from typing import List
 
+"""
+User need to ensure that:
+1. kernel, strides, padding of decoder to be a 1-to-1 map (not identical) to encoder.
+2. no stride greater than current image size.
+3. no kernel size greater than current image size.
+"""
+
 
 @dataclass
 class EncoderConfig():
@@ -32,12 +39,8 @@ class VAEConfig:
     latent_dim:    int     = 64
     img_size:      int     = 64
 
-    beta:         float   = 0.8
-    free_nats:    float   = 1.0
-    gamma:        float   = 1000.0
-    C_start:      float   = 0.0
-    C_stop:       float   = 1.0
-    C_max:        float   = 25.0
+    beta:         float   = 2.0
+    free_nats:    float   = 0.5 # /latent
     device:       str     = "cuda"
 
     encoder:       EncoderConfig = field(default_factory=EncoderConfig)
@@ -57,10 +60,10 @@ class TrainConfig:
     warmup_epochs:int     = 30
     patience:     int     = 10
 
-    scheduler:        str   = "plateau"  # or "cosine"
-    scheduler_patience:int   = 5
-    scheduler_factor: float = 0.5
-    min_lr:           float = 1e-6
+    scheduler:          str   = "plateau"  # or "cosine"
+    scheduler_patience: int   = 5
+    scheduler_factor:   float = 0.5
+    min_lr:             float = 1e-6
 
     num_workers:      int   = 4
     pin_memory:       bool  = True

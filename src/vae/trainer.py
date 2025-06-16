@@ -26,20 +26,17 @@ class Trainer:
 
     def __init__(self, model: nn.Module, model_config: Any, training_config: TrainConfig):
         self.model        = model
-        self.model_cfg = model_config
+        self.model_cfg    = model_config
         self.cfg          = training_config
 
         # Setup device
         self.device = torch.device(self.cfg.device)
         self.model.to(self.device)
 
-        self.setup_directories()
-
         self.current_epoch    = 0
         self.best_fitness     = float('inf')
         self.best_epoch       = 0
         self.no_improve_count = 0
-        self.global_iter      = 0
 
         self.train_losses = []
         self.val_losses   = []
@@ -51,14 +48,21 @@ class Trainer:
         # Setup data loaders
         self.setup_data()
 
-        # Save configurations
-        self.save_configs()
-
-    def setup_directories(self):
-        """Setup directory structure"""
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        self.run_name    = f"{self.cfg.experiment_name}_{timestamp}"
-        self.run_dir     = Path(f"runs/{self.cfg.project_name}/{self.run_name}")
+    def setup_directories(self, resume: Optional[str] = None):
+        """Create (or reuse) run/, weights/ and plots/ directories"""
+        if resume:
+            p = Path(resume)
+            if p.suffix == ".pt":
+                # e.g. runs/.../run_name/weights/last.pt
+                self.run_dir = p.parent.parent
+            else:
+                self.run_dir = p
+        else:
+            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+            self.run_dir = Path(f"runs/{self.cfg.project_name}/"
+                                f"{self.cfg.experiment_name}_{timestamp}")
+            self.run_dir.mkdir(parents=True, exist_ok=True)
+        self.run_name    = self.run_dir.name
         self.weights_dir = self.run_dir / "weights"
         self.plots_dir   = self.run_dir / "plots"
 
@@ -151,12 +155,13 @@ class Trainer:
             yaml.dump(yaml.safe_load(f_src), f_dst, default_flow_style=False)
 
     def train_epoch(self) -> Dict[str, float]:
-        """Train for one epoch, return dict with sum & per-pixel metrics."""
+        """Train for one epoch, return dict with per-image & per-pixel metrics."""
         self.model.train()
         # warmup β
         if hasattr(self.model, 'beta') and hasattr(self.cfg, 'warmup_epochs'):
-            frac = min(1.0, self.current_epoch / self.cfg.warmup_epochs)
-            self.model.beta = self.model_cfg.beta * frac
+            if self.cfg.warmup_epochs > 0:
+                frac = min(1.0, self.current_epoch / self.cfg.warmup_epochs)
+                self.model.beta = self.model_cfg.beta * frac
 
         sum_losses = {'total': 0.0, 'recon': 0.0, 'kld': 0.0}
         pbar = tqdm(self.train_loader,
@@ -166,46 +171,40 @@ class Trainer:
         for images, _ in pbar:
             images = images.to(self.device, non_blocking=True)
             recon, mu, logvar = self.model(images)
-            total, recon_l, kld_l = self.model.loss_function(
-                recon, images, mu, logvar, self.global_iter)
+            total, recon_l, kld_l = self.model.loss_function(recon, images, mu, logvar)
 
             self.optimizer.zero_grad()
             total.backward()
             self.optimizer.step()
 
-            self.global_iter += 1
+            bs, C, H, W = images.shape
+            px = C * H * W
 
-            bs = images.size(0)
-            sum_losses['total'] += total.item()
-            sum_losses['recon']  += recon_l.item()
-            sum_losses['kld']    += kld_l.item() * bs
+            # accumulate sums over samples
+            sum_losses['total']  += total.item()    * bs 
+            sum_losses['recon']  += recon_l.item()  * bs
+            sum_losses['kld']    += kld_l.item()    * bs
 
-            avg = {k: v / (i+1) for i, (k, v) in enumerate(
-                    zip(sum_losses.keys(), sum_losses.values()))}
             pbar.set_postfix(beta=self.model.beta)
 
         pbar.close()
 
         # compute averages per sample
         n = len(self.train_loader.dataset)
-        avg_total = sum_losses['total'] / n
-        avg_recon = sum_losses['recon']  / n
-        avg_kld   = sum_losses['kld']    / n
+        avg_total       = sum_losses['total'] / n
+        avg_recon_image = sum_losses['recon'] / n
+        avg_kld_image   = sum_losses['kld']   / n
 
-        # per-pixel
-        C = getattr(self.model_cfg.encoder, 'in_channels', 3)
-        H = W = self.model_cfg.img_size
-        px = C * H * W
         return {
-            'total': avg_total,
-            'recon': avg_recon,
-            'kld':   avg_kld,
-            'recon_per_pixel': avg_recon / px,
-            'kld_per_pixel':   avg_kld   / px
+            'total':            avg_total,
+            'recon_image':      avg_recon_image * px,
+            'kld_image':        avg_kld_image   * px,
+            'recon_pixel':      avg_recon_image,
+            'kld_pixel':        avg_kld_image  
         }
 
     def validate_epoch(self) -> Dict[str, float]:
-        """Validate for one epoch, return dict with sum & per-pixel metrics."""
+        """Validate for one epoch, return dict with per-image & per-pixel metrics."""
         self.model.eval()
         sum_losses = {'total': 0.0, 'recon': 0.0, 'kld': 0.0}
         pbar = tqdm(self.val_loader,
@@ -216,13 +215,14 @@ class Trainer:
             for images, _ in pbar:
                 images = images.to(self.device, non_blocking=True)
                 recon, mu, logvar = self.model(images)
-                total, recon_l, kld_l = self.model.loss_function(
-                    recon, images, mu, logvar, self.global_iter)
+                total, recon_l, kld_l = self.model.loss_function(recon, images, mu, logvar)
 
-                bs = images.size(0)
-                sum_losses['total'] += total.item()
-                sum_losses['recon']  += recon_l.item()
-                sum_losses['kld']    += kld_l.item() * bs
+                bs, C, H, W = images.shape
+                px = C * H * W
+
+                sum_losses['total']  += total.item()   * bs
+                sum_losses['recon']  += recon_l.item() * bs
+                sum_losses['kld']    += kld_l.item()   * bs
 
             pbar.set_postfix()
 
@@ -230,20 +230,16 @@ class Trainer:
 
         # compute averages per sample
         n = len(self.val_loader.dataset)
-        avg_total = sum_losses['total'] / n
-        avg_recon = sum_losses['recon']  / n
-        avg_kld   = sum_losses['kld']    / n
+        avg_total       = sum_losses['total'] / n
+        avg_recon_image = sum_losses['recon'] / n
+        avg_kld_image   = sum_losses['kld']   / n
 
-        # per-pixel
-        C = getattr(self.model_cfg.encoder, 'in_channels', 3)
-        H = W = self.model_cfg.img_size
-        px = C * H * W
         return {
-            'total': avg_total,
-            'recon': avg_recon,
-            'kld':   avg_kld,
-            'recon_per_pixel': avg_recon / px,
-            'kld_per_pixel':   avg_kld   / px
+            'total':            avg_total,
+            'recon_image':      avg_recon_image * px,
+            'kld_image':        avg_kld_image   * px,
+            'recon_pixel':      avg_recon_image,
+            'kld_pixel':        avg_kld_image
         }
 
     def save_checkpoint(self, is_best: bool = False, is_last: bool = False):
@@ -335,12 +331,24 @@ class Trainer:
 
     def train(self, resume: Optional[str] = None):
         """Main training loop"""
+        self.setup_directories()
+        self.save_configs()
+
         print(f"🚀 Starting training: {self.run_name}")
         print(f"📱 Device: {self.device}")
         print(f"🎯 Total epochs: {self.cfg.max_epochs}")
 
         if resume:
-            self.load_checkpoint(resume)
+            p = Path(resume)
+            if p.suffix == ".pt":
+                ckpt_path = p
+            else:
+                ckpt_path = p / "weights" / "last.pt"
+                
+            if self.load_checkpoint(str(ckpt_path)):
+                print(f"🔄 Resumed from checkpoint: {ckpt_path}")
+            else:
+                print(f"⚠️ Checkpoint not found: {ckpt_path}. Starting from scratch.")
 
         start = time.time()
         try:
@@ -371,10 +379,10 @@ class Trainer:
                 beta_info = f", β={self.model.beta:.3f}" if hasattr(self.model, 'beta') else ""
                 print(
                     f"Epoch {epoch:3d}/{self.cfg.max_epochs}: "
-                    f"Train sum={tr['recon']:.2f} (px={tr['recon_per_pixel']:.4f}), "
-                    f"KL sum={tr['kld']:.2f} (px={tr['kld_per_pixel']:.4f}); "
-                    f"Val sum={val['recon']:.2f} (px={val['recon_per_pixel']:.4f}), "
-                    f"KL sum={val['kld']:.2f} (px={val['kld_per_pixel']:.4f}); "
+                    f"Train img={tr['recon_image']:.4f} (px={tr['recon_pixel']:.6f}), "
+                    f"KL img={tr['kld_image']:.4f} (px={tr['kld_pixel']:.6f}); "
+                    f"Val   img={val['recon_image']:.4f} (px={val['recon_pixel']:.6f}), "
+                    f"KL img={val['kld_image']:.4f} (px={val['kld_pixel']:.6f}); "
                     f"LR={self.optimizer.param_groups[0]['lr']:.2e}{beta_info}"
                 )
 
@@ -399,7 +407,3 @@ class Trainer:
             self.save_losses_csv()
             self.plot_losses()
             print(f"📊 Results saved to: {self.run_dir}")
-
-
-
-

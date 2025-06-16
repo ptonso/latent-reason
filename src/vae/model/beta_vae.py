@@ -1,85 +1,60 @@
-# src/vae/model/beta_vae.py
-
 import torch
 import torch.nn.functional as F
-from torch import nn
-from src.vae.model.base_vae import BaseVAE
-from src.vae.model.encoder import Encoder
-from src.vae.model.decoder import Decoder
-from src.vae.model.config import VAEConfig
+from src.vae.model.base_vae     import BaseVAE
+from src.vae.model.encoder_decoder import Encoder, Decoder
+from src.vae.model.config       import VAEConfig
 
 class BetaVAE(BaseVAE):
-    """
-    A β-VAE: single interface.  Instantiate and call .train(...)
-    """
-
-    def __init__(
-        self,
-        vae_cfg: VAEConfig,
-        in_height: int,
-        in_width:  int
-    ):
+    def __init__(self, vae_cfg: VAEConfig):
         super().__init__()
-        self.config     = vae_cfg
-        self.device     = vae_cfg.device
-        self.encoder    = Encoder(vae_cfg.encoder, in_height, in_width, vae_cfg.latent_dim)
-        self.decoder    = Decoder(vae_cfg.decoder, in_height, in_width, vae_cfg.latent_dim)
+        self.config   = vae_cfg
+        img_size      = vae_cfg.img_size
+        self.beta     = vae_cfg.beta
+        self.free_nats = vae_cfg.free_nats
+        self.device   = vae_cfg.device
+
+        self.encoder = Encoder(vae_cfg.encoder, img_size, img_size, vae_cfg.latent_dim)
+        bot_h, bot_w = self.encoder.conv_out_h, self.encoder.conv_out_w
+        self.decoder = Decoder(
+            vae_cfg.decoder, bot_h, bot_w, img_size, img_size, vae_cfg.latent_dim
+        )
+
         self.latent_dim = vae_cfg.latent_dim
-        self.beta       = vae_cfg.beta
-        self.C_max      = vae_cfg.C_max
-        self.gamma      = vae_cfg.gamma
-        self.C_start    = vae_cfg.C_start
-        self.C_stop     = vae_cfg.C_stop
         self.apply(self._init_weights)
 
     @staticmethod
-    def reparameterize(mu: torch.Tensor, logvar: torch.Tensor) -> torch.Tensor:
-        std = torch.exp(0.5 * logvar)
-        eps = torch.randn_like(std)
-        return mu + eps * std
+    def reparameterize(mu, logvar):
+        return mu + torch.randn_like(mu) * torch.exp(0.5 * logvar)
 
-    def forward(self, x: torch.Tensor):
+    def forward(self, x):
         mu, logvar = self.encoder(x)
         z          = self.reparameterize(mu, logvar)
         recon      = self.decoder(z)
         return recon, mu, logvar
 
+
     def loss_function(
         self,
-        recon: torch.Tensor,
-        x:     torch.Tensor,
-        mu:    torch.Tensor,
-        logvar:torch.Tensor,
-        global_iter: int = 0
+        recon:   torch.Tensor,   # logits B×C×H×W
+        x:       torch.Tensor,   # targets in [0,1]
+        mu:      torch.Tensor,   # B×d
+        logvar:  torch.Tensor,   # B×d
     ):
-        """
-        β-VAE loss with capacity-annealing (Burgess et al. 2018).
-
-        Args
-        ----
-        recon : raw logits from decoder  (no tanh/sigmoid!)
-        x     : targets in [0,1]
-        mu, logvar : Gaussian parameters
-        global_iter : training step counter (start at 0)
-        """
-
-        # --- reconstruction ---
+        # 1 ─ reconstruction (mean over pixels & batch)
         recon_loss = F.binary_cross_entropy_with_logits(
-            recon, x, reduction='sum'
+            recon, x, reduction="mean"
         )
 
-        # --- KL divergence (mean over batch) ---
-        kld = 0.5 * (mu.pow(2) + logvar.exp() - logvar - 1).sum(1).mean()
+        if self.beta == 0:
+            zero = torch.tensor(0., device=x.device)
+            return recon_loss, zero, zero
 
-        # --- capacity schedule C(t) ---
-        if global_iter < self.C_start:
-            C = 0.0
-        elif global_iter > self.C_stop:
-            C = self.C_max
-        else:
-            C = self.C_max * (global_iter - self.C_start) / (self.C_stop - self.C_start)
+        # 2 ─ per-latent KL: B×d
+        kl_dim = 0.5 * (mu.pow(2) + logvar.exp() - logvar - 1)   # shape (B,d)
 
-        kld_loss = self.gamma * torch.abs(kld - C)
+        # 3 ─ free-nats per latent
+        kl_after_free = torch.clamp(kl_dim - self.free_nats, min=0.0)
+        kld = kl_after_free.sum(1).mean()
 
-        total = recon_loss + kld_loss
-        return total, recon_loss.detach(), kld.detach()
+        total = recon_loss + self.beta * kld
+        return total, recon_loss, kld
