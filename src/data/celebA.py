@@ -1,7 +1,9 @@
-import shutil
-import csv
-from pathlib import Path
+import csv, shutil
 import yaml
+from pathlib import Path
+from typing import Dict
+
+
 from kaggle.api.kaggle_api_extended import KaggleApi
 
 
@@ -51,7 +53,6 @@ def clean_celebA(
     if not part_path.exists():
         raise FileNotFoundError(f"Partition file not found: {part_path}")
 
-    # load partitions: filename → 0=train,1=val,2=test
     partitions: dict[str,int] = {}
     with part_path.open(newline="") as f:
         reader = csv.reader(f)
@@ -59,24 +60,20 @@ def clean_celebA(
         for name, part in reader:
             partitions[name] = int(part)
 
-    # find the image-folder root
     img_root = raw_root / "img_align_celeba"
     if not img_root.exists():
         raise FileNotFoundError(f"Couldn't find img_align_celeba under {raw_root}")
 
-    # build a map: filename → full path, walking recursively
     jpg_map: dict[str, Path] = {
         p.name: p for p in img_root.rglob("*.jpg")
     }
     if not jpg_map:
         raise RuntimeError(f"No .jpg files found under {img_root}")
 
-    # prepare output directories
     out_root = Path(output_dir)
     for split in ("train", "val", "test"):
         (out_root / split).mkdir(parents=True, exist_ok=True)
 
-    # copy each file into its split
     split_names = {0: "train", 1: "val", 2: "test"}
     for fname, part in partitions.items():
         src = jpg_map.get(fname)
@@ -86,7 +83,6 @@ def clean_celebA(
         dst = out_root / split_names[part] / fname
         shutil.copy2(src, dst)
 
-    # write data.yaml
     cfg = { split: str(out_root / split) for split in ("train", "val", "test") }
     with (out_root / "data.yaml").open("w") as f:
         yaml.safe_dump(cfg, f)

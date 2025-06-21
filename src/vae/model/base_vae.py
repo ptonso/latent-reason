@@ -36,17 +36,17 @@ class BaseVAE(nn.Module):
     def decode_prob(self, z: torch.Tensor) -> torch.Tensor:
         """
         Decode latent z → float in [0,1] using sigmoid.
-        Does NOT detach or move to cpu.
+        Assumes decoder(z) ends in tanh [-1,1].
         """
-        return torch.sigmoid(self.decoder(z))
+        return (self.decoder(z) + 1.0) * 0.5
 
     @torch.no_grad()
     def decode_uint8(self, z: torch.Tensor) -> torch.ByteTensor:
         """
         Decode latent z → uint8 {0,…,255}.  Convenience wrapper for saving.
         """
-        return (self.decode_prob(z) * 255).clamp(0, 255).byte()
-
+        return (self.decode_prob(z) * 255.0).clamp(0, 255).to(torch.uint8)
+    
 
     def run(self, train_cfg: TrainConfig, resume:Optional[str] = None) -> Union[nn.Module, Trainer]:
 

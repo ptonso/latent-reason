@@ -86,6 +86,7 @@ class Decoder(BaseVAE):
             layers += [nn.ConvTranspose2d(c_in, c_out, k, s, p), Norm(cfg.norm_type, c_out), act]
             c_in = c_out
         layers.append(nn.ConvTranspose2d(c_in, cfg.out_channels, cfg.kernels[0], cfg.strides[0], cfg.paddings[0]))
+        layers.append(nn.Tanh())
         self.deconv = nn.Sequential(*layers)
 
         self.apply(self._init_weights)

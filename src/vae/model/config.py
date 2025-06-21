@@ -1,5 +1,5 @@
 from dataclasses import dataclass, field
-from typing import List
+from typing import *
 
 """
 User need to ensure that:
@@ -60,11 +60,16 @@ class TrainConfig:
     warmup_epochs:int     = 30
     patience:     int     = 10
 
-    scheduler:          str   = "plateau"  # or "cosine"
-    scheduler_patience: int   = 5
-    scheduler_factor:   float = 0.5
-    min_lr:             float = 1e-6
+    scheduler: Literal["plateau", "cosine", "onecycle"] = "plateau"
+    scheduler_kwargs: Dict[str, Any] = field(default_factory=lambda: {
+        "scheduler_patience": 5,
+        "scheduler_factor": 0.5,
+        "min_lr": 1e-6,
+    })
 
+    optimizer_type: str = "adam"    # "adam" or "adamw"
+    weight_decay: float = 0.0       # only used if optimizer_type=="adamw"
+    
     num_workers:      int   = 4
     pin_memory:       bool  = True
 
@@ -75,3 +80,23 @@ class TrainConfig:
         if self.device == "auto":
             import torch
             self.device = "cuda" if torch.cuda.is_available() else "cpu"
+
+        defaults = {
+            "plateau": {
+                "scheduler_patience": 5,
+                "scheduler_factor": 0.5,
+                "min_lr": 1e-6,
+            },
+            "cosine": {
+                "eta_min": 1e-6,
+            },
+            "onecycle": {
+                "max_lr": self.lr,
+                "pct_start": 0.3,
+                "div_factor": 25,
+                "final_div_factor": 1e2,
+            },
+        }
+        base = defaults[self.scheduler].copy()
+        base.update(self.scheduler_kwargs)
+        self.scheduler_kwargs = base

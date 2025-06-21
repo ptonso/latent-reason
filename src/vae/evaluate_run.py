@@ -20,6 +20,8 @@ def imshow_tensor(ax, img_tensor):
     Show a C×H×W tensor in [0,1].  C==1 → grayscale, else RGB.
     """
     img = img_tensor.detach().cpu()
+    img = (img + 1.0) / 2.0        # [-1,1] → [0,1]
+    img = img.clamp(0, 1)
     if img.shape[0] == 1:
         ax.imshow(img.squeeze(), cmap="gray")
     else:
@@ -42,11 +44,7 @@ def load_vae(run_dir: str):
         "cuda" if (vae_cfg.device == "auto" and torch.cuda.is_available()) else "cpu"
     )
 
-    vae = BetaVAE(
-        vae_cfg,
-        in_height=vae_cfg.img_size,
-        in_width=vae_cfg.img_size,
-    ).to(device).eval()
+    vae = BetaVAE(vae_cfg,).to(device).eval()
 
     ckpt = torch.load(run / "weights" / "best.pt", map_location=device)
     vae.load_state_dict(ckpt["model_state_dict"])
@@ -72,8 +70,8 @@ def basic_metrics(vae, loader, device):
     mu, logvar = vae.encoder(xb)
 
     with torch.no_grad():
-        recon_mu   = vae.decode_prob(mu)                       # expected recon
-        recon_zero = vae.decode_prob(torch.zeros_like(mu))     # baseline recon
+        recon_mu   = vae.decode_prob(mu) * 2.0 - 1.0                       # expected recon
+        recon_zero = vae.decode_prob(torch.zeros_like(mu)) * 2.0 - 1.0     # baseline recon
 
     print(f"MSE(x, recon_mu):   {F.mse_loss(recon_mu, xb, reduction='mean'):.6f}")
     print(f"MSE(x, recon_zero): {F.mse_loss(recon_zero, xb, reduction='mean'):.6f}")
@@ -101,8 +99,8 @@ def mu_variance(vae, loader, device):
 def plot_recon(vae, loader, device, n=6):
     imgs, _ = next(iter(loader))
     with torch.no_grad():
-        logits, _, _ = vae(imgs.to(device))          # forward returns logits
-        recon = torch.sigmoid(logits).detach().cpu()          # → [0,1]
+        recon, _, _ = vae(imgs.to(device))          # forward returns logits
+        recon = recon.detach().cpu()          # → [0,1]
     imgs = imgs.cpu()
 
     fig, ax = plt.subplots(2, n, figsize=(2*n, 4))

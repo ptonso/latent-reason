@@ -3,8 +3,11 @@
 import os
 from src.vae.model.config import *
 from src.vae.model.beta_vae import BetaVAE
+from src.utils import set_seed
 
 def main():
+
+    set_seed(42)
 
     encoder_cfg = EncoderConfig(
         in_channels=1,        # MNIST is grayscale
