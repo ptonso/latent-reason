@@ -57,7 +57,7 @@ class TrainConfig:
     lr:           float   = 5e-4
     batch_size:   int     = 256
     max_epochs:   int     = 150
-    warmup_epochs:int     = 30
+    beta_warmup:  int     = 30
     patience:     int     = 10
 
     scheduler: Literal["plateau", "cosine", "onecycle"] = "plateau"
@@ -69,7 +69,7 @@ class TrainConfig:
 
     optimizer_type: str = "adam"    # "adam" or "adamw"
     weight_decay: float = 0.0       # only used if optimizer_type=="adamw"
-    
+
     num_workers:      int   = 4
     pin_memory:       bool  = True
 

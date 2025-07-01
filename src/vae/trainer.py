@@ -173,8 +173,8 @@ class Trainer:
 
     def train_epoch(self) -> Dict[str, float]:
         self.model.train()
-        if self.cfg.warmup_epochs > 0:
-            frac = min(1.0, self.current_epoch / self.cfg.warmup_epochs)
+        if self.cfg.beta_warmup > 0:
+            frac = min(1.0, self.current_epoch / self.cfg.beta_warmup)
             self.model.beta = self.model_cfg.beta * frac
 
         sums = {'total': 0.0, 'recon': 0.0, 'kld': 0.0}
@@ -267,6 +267,7 @@ class Trainer:
         self.train_losses     = ckpt.get('train_losses', [])
         self.val_losses       = ckpt.get('val_losses', [])
         self.lr_history       = ckpt.get('lr_history', [])
+        self.epoch_times      = ckpt.get('epoch_times', [])
         print(f"⚙️ Resumed from epoch {self.current_epoch}, best_fitness={self.best_fitness:.4f}, patience: {self.no_improve_count}/{self.cfg.patience}")
         return True
 

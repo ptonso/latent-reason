@@ -113,7 +113,7 @@ def plot_recon(vae, loader, device, n=6):
 
 def latent_traverse(vae, loader, device, dims=3, steps=None):
     if steps is None:
-        steps = [-3, -2, -1, 0, 1, 2, 3]
+        steps = [-6, -3, 0, 3, 6]
 
     latent_dim = vae.latent_dim
     dims = min(dims, latent_dim)

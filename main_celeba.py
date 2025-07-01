@@ -33,8 +33,8 @@ def main():
     vae_cfg = VAEConfig(
         latent_dim  = 64,
         img_size    = 64,
-        beta        = 1.0,
-        free_nats   = 0.0,
+        beta        = 5.0,
+        free_nats   = 0.5,
         device      = "cuda",
         encoder     = enc,
         decoder     = dec,
@@ -44,7 +44,7 @@ def main():
         lr              = 1e-3,
         batch_size      = 768,
         max_epochs      = 200,
-        warmup_epochs   = 50,
+        beta_warmup     = 30,
         patience        = 10,
         optimizer_type  = "adamw",
         weight_decay    = 1e-2,
@@ -55,14 +55,14 @@ def main():
             div_factor       = 25,
             final_div_factor = 1e4,
         ),
-        num_workers     = 8,
+        num_workers     = 6,
         data_yaml       = "data/01--clean/celebA/data.yaml",
         project_name    = "celebA-vae",
-        experiment_name = "beta1-baseline",
+        experiment_name = "beta5-fn.5",
     )
 
     vae = BetaVAE(vae_cfg)
-    vae.run(train_cfg=train_cfg)
+    vae.run(train_cfg=train_cfg, resume="beta5-fn.5")
 
 if __name__ == "__main__":
     main()
