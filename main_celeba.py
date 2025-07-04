@@ -41,14 +41,14 @@ def main():
     )
 
     train_cfg = TrainConfig(
-        lr              = 1e-3,
-        batch_size      = 768,
-        max_epochs      = 200,
-        beta_warmup     = 30,
-        patience        = 10,
-        optimizer_type  = "adamw",
-        weight_decay    = 1e-2,
-        scheduler       = "onecycle",
+        lr               = 1e-3,
+        batch_size       = 768,
+        max_epochs       = 200,
+        beta_warmup      = 30,
+        patience         = 10,
+        optimizer_type   = "adamw",
+        weight_decay     = 1e-2,
+        scheduler        = "onecycle",
         scheduler_kwargs = dict(
             max_lr           = 4e-3,
             pct_start        = 0.1,
