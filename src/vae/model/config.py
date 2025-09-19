@@ -8,9 +8,25 @@ User need to ensure that:
 3. no kernel size greater than current image size.
 """
 
+@dataclass
+class MLPEncoderConfig:
+    """MLP encoder: flatten -> [hidden]* -> Linear -> 2*latent."""
+    in_channels: int = 3
+    hidden: List[int] = field(default_factory=lambda: [1024, 512])
+    activation: str = "silu"
+    norm_type: str = "layer"
 
 @dataclass
-class EncoderConfig():
+class MLPDecoderConfig:
+    """MLP decoder: z -> [hidden]* -> Linear -> C*H*W logits (reshape at the end)."""
+    out_channels: int = 3
+    hidden: List[int] = field(default_factory=lambda: [512, 1024])
+    activation: str = "silu"
+    norm_type: str = "layer"
+
+
+@dataclass
+class CNNEncoderConfig():
     in_channels: int     = 3
     channels: List[int]  = field(default_factory=lambda: [  64, 128, 256, 512])
     kernels:  List[int]  = field(default_factory=lambda: [   4,   4,   4,   4])
@@ -22,7 +38,7 @@ class EncoderConfig():
     norm_type:  str      = "layer"
 
 @dataclass
-class DecoderConfig():
+class CNNDecoderConfig():
     out_channels: int    = 3
     channels: List[int]  = field(default_factory=lambda:  [ 512, 256, 128,  64])
     kernels:  List[int]  = field(default_factory=lambda:  [   4,   4,   4,   4])
@@ -43,8 +59,11 @@ class VAEConfig:
     free_nats:    float   = 0.5 # /latent
     device:       str     = "cuda"
 
-    encoder:       EncoderConfig = field(default_factory=EncoderConfig)
-    decoder:       DecoderConfig = field(default_factory=DecoderConfig)
+    recon_type: Literal["l1","l2","smooth_l1"] = "l2"
+    huber_delta:  float   = 1.0 # only for smooth_l1
+
+    encoder:       CNNEncoderConfig = field(default_factory=CNNEncoderConfig)
+    decoder:       CNNDecoderConfig = field(default_factory=CNNDecoderConfig)
 
 
 

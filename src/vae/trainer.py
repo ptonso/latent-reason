@@ -1,4 +1,3 @@
-# src/vae/trainer.py
 import os, json, time
 from pathlib import Path
 from typing import *
@@ -22,6 +21,15 @@ from src.vae.dataset import ReconstructionDataset
 
 def _to_num(t: torch.Tensor) -> float: # robust .item() for bf16/fp16
     return t.float().item()
+
+def _atomic_save(state: dict, path: Path):
+    """ensure safe torch.save process"""
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    torch.save(state, tmp)
+    os.replace(tmp, path)
+
+def _default_run_dir(project: str, experiment: str) -> Path:
+    return Path("runs") / project / experiment
 
 class Trainer:
     """Universal trainer for reconstruction models"""
@@ -53,70 +61,71 @@ class Trainer:
         self.setup_scheduler()
 
 
-    def setup_directories(self, resume: Optional[str] = None):
+    def setup_directories(self, resume: bool = False):
+        base_root = Path("runs") / self.cfg.project_name
+        base_root.mkdir(parents=True, exist_ok=True)
+
+        desired = _default_run_dir(self.cfg.project_name, self.cfg.experiment_name)
+
         if resume:
-            p = Path(resume)
-            if p.suffix == ".pt" and p.exists():
-                self.run_dir = p.parent.parent
-            elif p.is_dir():
-                self.run_dir = p
-            else:
-                root = Path("runs") / self.cfg.project_name
-                matches = [d for d in root.iterdir() if d.is_dir() and d.name == resume]
-                if not matches:
-                    raise FileNotFoundError(f"No run named '{resume}' in {root}")
-                self.run_dir = matches[0]
+            if not desired.exists():
+                raise FileNotFoundError(f"Resume dir not found: {desired}")
+            self.run_dir = desired
         else:
-            base_root = Path("runs") / self.cfg.project_name
-            run_name  = self._get_next_run_name(base_root, self.cfg.experiment_name)
-            self.run_dir = base_root / run_name
+            self.run_dir = Path(self._get_next_run_name(base_root, self.cfg.experiment_name))
+            if not self.run_dir.is_absolute():
+                self.run_dir = base_root / self.run_dir.name
             self.run_dir.mkdir(parents=True, exist_ok=True)
 
         self.run_name    = self.run_dir.name
         self.weights_dir = self.run_dir / "weights"
         self.plots_dir   = self.run_dir / "plots"
-        for d in (self.weights_dir, self.plots_dir):
-            d.mkdir(parents=True, exist_ok=True)
+        self.weights_dir.mkdir(parents=True, exist_ok=True)
+        self.plots_dir.mkdir(parents=True, exist_ok=True)
 
         print(f"📁 Experiment directory: {self.run_dir}")
 
     def setup_optimizer(self, model: nn.Module):
         opt = self.cfg.optimizer_type.lower()
+        lr = self.cfg.lr
+        if self.cfg.scheduler == "onecucle":
+            skw = self.cfg.scheduler_kwargs
+            lr = skw["max_lr"] / skw.get("div_factor", 25)
         if opt == "adamw":
             self.optimizer = optim.AdamW(
-                model.parameters(), lr=self.cfg.lr,
-                betas=(0.9, 0.95), weight_decay=self.cfg.weight_decay
-            )
+                model.parameters(), lr=lr, betas=(0.9, 0.95), 
+                weight_decay=self.cfg.weight_decay
+                )
         elif opt == "adam":
             self.optimizer = optim.Adam(
-                model.parameters(), lr=self.cfg.lr,
-                betas=(0.9, 0.999)
+                model.parameters(), lr=lr, betas=(0.9, 0.999)
             )
         else:
             raise ValueError(f"Unknown optimizer: {self.cfg.optimizer_type}")
 
     def setup_scheduler(self):
         skw = self.cfg.scheduler_kwargs
+
         if self.cfg.scheduler == "plateau":
             self.scheduler = ReduceLROnPlateau(
                 self.optimizer, mode="min",
-                factor=skw["scheduler_factor"],
-                patience=skw["scheduler_patience"],
-                min_lr=skw["min_lr"]
+                factor   = skw.get("scheduler_factor", 0.5),
+                patience = skw.get("scheduler_patience", 6),
+                min_lr   = skw.get("min_lr", 1e-6),
             )
         elif self.cfg.scheduler == "cosine":
             self.scheduler = CosineAnnealingLR(
                 self.optimizer, T_max=self.cfg.max_epochs,
-                eta_min=skw["min_lr"]
+                eta_min=skw.get("min_lr", 1e-6)
             )
         elif self.cfg.scheduler == "onecycle":
             steps = len(self.train_loader)
             self.scheduler = OneCycleLR(
-                self.optimizer, max_lr=skw["max_lr"],
+                self.optimizer, max_lr=skw.get("max_lr", 4e-3),
                 epochs=self.cfg.max_epochs, steps_per_epoch=steps,
-                pct_start=skw.get("pct_start", 0.3),
-                div_factor=skw.get("div_factor", 25),
-                final_div_factor=skw.get("final_div_factor", 1e2)
+                pct_start        = skw.get("pct_start", 0.1),
+                div_factor       = skw.get("div_factor", 25),
+                final_div_factor = skw.get("final_div_factor", 1e4)
             )
         else:
             raise ValueError(f"Unknown scheduler: {self.cfg.scheduler}")
@@ -191,6 +200,9 @@ class Trainer:
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), 5.0)
             self.optimizer.step()
 
+            if self.cfg.scheduler == "onecycle":
+                self.scheduler.step()
+
             bs = x.size(0)
             sums['total'] += _to_num(total)   * bs
             sums['recon'] += _to_num(recon_l) * bs
@@ -248,10 +260,10 @@ class Trainer:
             'training_config'     : self.dataclass_to_dict(self.cfg)
         }
         if is_best:
-            torch.save(ckpt, self.weights_dir / "best.pt")
+            _atomic_save(ckpt, self.weights_dir / "best.pt")
             print(f"💾 Best model saved (epoch {self.current_epoch})")
         if is_last or (self.current_epoch % self.cfg.save_period == 0):
-            torch.save(ckpt, self.weights_dir / "last.pt")
+            _atomic_save(ckpt, self.weights_dir / "last.pt")
 
     def load_checkpoint(self, path: Union[str, Path]) -> bool:
         if not os.path.exists(path):
@@ -323,7 +335,7 @@ class Trainer:
         plt.savefig(self.plots_dir / "learning_rate.png", dpi=150); plt.close()
 
 
-    def train(self, resume: Optional[str] = None):
+    def train(self, resume: bool = False):
         self.setup_directories(resume)
         self.save_configs()
 
@@ -332,8 +344,7 @@ class Trainer:
         print(f"🎯 Total epochs: {self.cfg.max_epochs}")
 
         if resume:
-            p = Path(resume)
-            path = p if p.suffix == ".pt" else self.weights_dir / "last.pt"
+            path = self.weights_dir / "last.pt"
             if self.load_checkpoint(path):
                 print(f"🔄 Resumed from checkpoint: {path}")
             else:
@@ -350,7 +361,7 @@ class Trainer:
 
                 if self.cfg.scheduler == "plateau":
                     self.scheduler.step(val['total'])
-                else:
+                elif self.cfg.scheduler == "cosine":
                     self.scheduler.step()
 
                 self.train_losses.append(tr)

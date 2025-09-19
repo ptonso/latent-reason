@@ -6,7 +6,7 @@ def main():
 
     set_seed(42, deterministic=False)
 
-    enc = EncoderConfig(
+    enc = CNNEncoderConfig(
         in_channels  = 1,    # MNIST is grayscale
         channels     = [  32,  64, 128],
         kernels      = [   4,   4,   3],
@@ -19,7 +19,7 @@ def main():
 
     )
 
-    dec = DecoderConfig(
+    dec = CNNDecoderConfig(
         out_channels = 1,
         channels     = [ 128,  64,  32],
         kernels      = [   3,   4,   4],
@@ -65,7 +65,7 @@ def main():
 
 
     vae = BetaVAE(vae_cfg)
-    vae.run(train_cfg=train_cfg) # , resume="mnist"
+    vae.run(train_cfg=train_cfg, resume=False)
 
 if __name__ == "__main__":
     main()

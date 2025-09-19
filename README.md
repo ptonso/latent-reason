@@ -19,4 +19,3 @@ A modular and extensible framework for training, evaluating, and visualizing Var
   - Loss and LR plots
 - 🧪 **Dataset Preparation Scripts** for CelebA, CIFAR-100, dSprites, COIL-100, ModelNet40, and 3D Shapes.
 
-

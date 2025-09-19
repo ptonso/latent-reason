@@ -1,10 +1,8 @@
 # src/vae/dataset.py
 
-import os
 from pathlib import Path
 from typing import List, Tuple
 from PIL import Image
-import torch
 from torch.utils.data import Dataset
 from torchvision import transforms
 

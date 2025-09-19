@@ -6,7 +6,7 @@ def main():
 
     set_seed(42, deterministic=False)
 
-    enc = EncoderConfig(
+    enc = CNNEncoderConfig(
         in_channels  = 3,
         channels     = [  64, 128, 192, 256],
         kernels      = [   4,   4,   4,   4],
@@ -18,7 +18,7 @@ def main():
         norm_type    = "none",
     )
 
-    dec = DecoderConfig(
+    dec = CNNDecoderConfig(
         out_channels = 3,
         channels     = [ 256, 192, 128,  64],
         kernels      = [   4,   4,   4,   4],
@@ -35,6 +35,7 @@ def main():
         img_size    = 64,
         beta        = 5.0,
         free_nats   = 0.5,
+        recon_type  = "l2",
         device      = "cuda",
         encoder     = enc,
         decoder     = dec,
@@ -42,27 +43,21 @@ def main():
 
     train_cfg = TrainConfig(
         lr               = 1e-3,
-        batch_size       = 768,
-        max_epochs       = 200,
-        beta_warmup      = 30,
+        batch_size       = 512,
+        max_epochs       = 100,
+        beta_warmup      = 20,
         patience         = 10,
         optimizer_type   = "adamw",
         weight_decay     = 1e-2,
-        scheduler        = "onecycle",
-        scheduler_kwargs = dict(
-            max_lr           = 4e-3,
-            pct_start        = 0.1,
-            div_factor       = 25,
-            final_div_factor = 1e4,
-        ),
-        num_workers     = 6,
+        scheduler        = "cosine",
+        num_workers     = 4,
         data_yaml       = "data/01--clean/celebA/data.yaml",
         project_name    = "celebA-vae",
-        experiment_name = "beta5-fn.5",
+        experiment_name = "beta0-baseline-cosine",
     )
 
     vae = BetaVAE(vae_cfg)
-    vae.run(train_cfg=train_cfg, resume="beta5-fn.5")
+    vae.run(train_cfg=train_cfg, resume=True)
 
 if __name__ == "__main__":
     main()
