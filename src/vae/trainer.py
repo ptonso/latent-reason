@@ -15,7 +15,7 @@ from tqdm.auto import tqdm
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from src.vae.model.config import TrainConfig
+from src.vae.config import TrainConfig
 from src.vae.dataset import ReconstructionDataset
 
 
@@ -182,64 +182,105 @@ class Trainer:
 
     def train_epoch(self) -> Dict[str, float]:
         self.model.train()
-        if self.cfg.beta_warmup > 0:
-            frac = min(1.0, self.current_epoch / self.cfg.beta_warmup)
-            self.model.beta = self.model_cfg.beta * frac
 
-        sums = {'total': 0.0, 'recon': 0.0, 'kld': 0.0}
+        if self.cfg.beta_warmup > 0:
+            base_beta: float = float(self.model.config.criterion.beta)
+            frac: float = min(1.0, self.current_epoch / self.cfg.beta_warmup)
+            beta_now: float = base_beta * frac
+            self.model.neck.beta = beta_now
+
+        s_total = torch.zeros((), device=self.device)
+        s_recon = torch.zeros((), device=self.device)
+        s_kld   = torch.zeros((), device=self.device)
         pbar = tqdm(self.train_loader, desc=f"Epoch {self.current_epoch}/{self.cfg.max_epochs} [Train]", leave=False)
 
-        for x, _ in pbar:
+        for i, (x, _) in enumerate(pbar):
             x = x.to(self.device, non_blocking=True)
+            ctx: Context = {}  # neck writes mu/logvar here
 
-            recon, mu, logvar = self.model(x)
-            total, recon_l, kld_l = self.model.loss_function(recon, x, mu, logvar)
+            logits: GenLogits = self.model(x, ctx)
+            losses = self.model.criterion(logits, x, ctx)
 
-            self.optimizer.zero_grad()
+            total = losses['loss']
+            recon = losses['loss/recon']
+            kld   = losses['loss/kld']
+
+            self.optimizer.zero_grad(set_to_none=True)
             total.backward()
             torch.nn.utils.clip_grad_norm_(self.model.parameters(), 5.0)
             self.optimizer.step()
-
             if self.cfg.scheduler == "onecycle":
                 self.scheduler.step()
 
             bs = x.size(0)
-            sums['total'] += _to_num(total)   * bs
-            sums['recon'] += _to_num(recon_l) * bs
-            sums['kld']   += _to_num(kld_l)   * bs
-            pbar.set_postfix(beta=self.model.beta)
+            s_total = s_total + total.detach() * bs
+            s_recon = s_recon + recon.detach() * bs
+            s_kld   = s_kld   + kld.detach()   * bs
+            
+            if (i % 25) == 0:  # throttle UI updates
+                pbar.set_postfix(beta=self.model.criterion.cfg.beta)
 
-        n = len(self.train_loader.dataset)
+
+        n  = len(self.train_loader.dataset)
+        px = self.px
+        ld = float(self.model.latent_dim)
+
+        total_mean = (s_total / n).item()
+        recon_mean = (s_recon / n).item()
+        kld_mean   = (s_kld   / n).item()
+
         return {
-            'total'       : sums['total']  / n,
-            'recon_image' : sums['recon']  / n,
-            'recon_pixel' : sums['recon']  / n / self.px,
-            'kld_image'   : sums['kld']    / n,
-            'kld_dim'     : (sums['kld']/n) / self.model_cfg.latent_dim
+            'total'       : total_mean,
+            'recon_image' : recon_mean,
+            'recon_pixel' : recon_mean / px,
+            'kld_image'   : kld_mean,
+            'kld_dim'     : kld_mean / ld,
         }
+
 
     def validate_epoch(self) -> Dict[str, float]:
         self.model.eval()
-        sums = {'total': 0.0, 'recon': 0.0, 'kld': 0.0}
+
+        s_total = torch.zeros((), device=self.device)
+        s_recon = torch.zeros((), device=self.device)
+        s_kld   = torch.zeros((), device=self.device)
+
         pbar = tqdm(self.val_loader, desc=f"Epoch {self.current_epoch}/{self.cfg.max_epochs} [Val]", leave=False)
 
         with torch.no_grad():
-            for x, _ in pbar:
+            for i, (x, _) in enumerate(pbar):
                 x = x.to(self.device, non_blocking=True)
-                recon, mu, logvar = self.model(x)
-                total, recon_l, kld_l = self.model.loss_function(recon, x, mu, logvar)
-                bs = x.size(0)
-                sums['total'] += _to_num(total)   * bs
-                sums['recon'] += _to_num(recon_l) * bs
-                sums['kld']   += _to_num(kld_l)   * bs
+                ctx: Context = {}
+                logits: GenLogits = self.model(x, ctx)
+                losses = self.model.criterion(logits, x, ctx)
 
-        n = len(self.val_loader.dataset)
+                total = losses['loss']
+                recon = losses['loss/recon']
+                kld   = losses['loss/kld']
+
+                bs = x.size(0)
+                s_total = s_total + total * bs
+                s_recon = s_recon + recon * bs
+                s_kld   = s_kld   + kld   * bs
+        
+
+                if (i % 50) == 0:
+                    pbar.set_postfix(beta=self.model.criterion.cfg.beta)
+
+        n  = len(self.val_loader.dataset)
+        px = self.px
+        ld = float(self.model.latent_dim)
+
+        total_mean = (s_total / n).item()
+        recon_mean = (s_recon / n).item()
+        kld_mean   = (s_kld   / n).item()
+
         return {
-            'total'       : sums['total']  / n,
-            'recon_image' : sums['recon']  / n,
-            'recon_pixel' : sums['recon']  / n / self.px,
-            'kld_image'   : sums['kld']    / n,
-            'kld_dim'     : (sums['kld']/n) / self.model_cfg.latent_dim
+            'total'       : total_mean,
+            'recon_image' : recon_mean,
+            'recon_pixel' : recon_mean / px,
+            'kld_image'   : kld_mean,
+            'kld_dim'     : kld_mean / ld,
         }
 
 
@@ -375,7 +416,7 @@ class Trainer:
                 else:
                     self.no_improve_count += 1
 
-                beta_info = f", β={self.model.beta:.3f}" if hasattr(self.model, 'beta') else ""
+                beta_info = f", β={self.model.criterion.cfg.beta:.3f}"
                 print(
                     f"Epoch {epoch:3d}/{self.cfg.max_epochs}: "
                     f"Train img={tr['recon_image']:.4f} (px={tr['recon_pixel']:.6f}), "

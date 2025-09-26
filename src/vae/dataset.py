@@ -1,5 +1,3 @@
-# src/vae/dataset.py
-
 from pathlib import Path
 from typing import List, Tuple
 from PIL import Image

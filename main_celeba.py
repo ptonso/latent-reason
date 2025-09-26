@@ -53,11 +53,11 @@ def main():
         num_workers     = 4,
         data_yaml       = "data/01--clean/celebA/data.yaml",
         project_name    = "celebA-vae",
-        experiment_name = "beta0-baseline-cosine",
+        experiment_name = "beta0-baseline-cosine-2",
     )
 
     vae = BetaVAE(vae_cfg)
-    vae.run(train_cfg=train_cfg, resume=True)
+    vae.run(train_cfg=train_cfg, resume=False)
 
 if __name__ == "__main__":
     main()
