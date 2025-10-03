@@ -32,18 +32,35 @@ class CNNEncoderConfig:
     activation:  str        = "silu"
     norm_type:   str        = "layer"
 
+
+
 @dataclass
-class BetaVAECriterionConfig:
-    beta:        float                               = 2.0
-    recon_type:  Literal["l1","l2","smooth_l1"]      = "l2"
-    huber_delta: float                               = 1.0
-    # perceptual ↓
+class PerceptualConfig:
     perc_source: Literal["none", "lpips", "encoder"] = "none"
     perc_weight: float                               = 1.0
-    pix_weight:  float                               = 1.0
     perc_use_l1: bool                                = True
     lpips_net:   Literal["alex", "vgg", "squeeze"]   = "alex"
-    perc_layers: Optional[Mapping[str, float]]       = None
+    enc_layers: Optional[Mapping[str, float]]       = None
+
+
+
+@dataclass
+class GaussianCriterionConfig:
+    beta:        float      = 2.0
+    huber_delta: float      = 1.0
+    pix_weight:  float      = 1.0
+    recon_type:  Literal["l1","l2","smooth_l1"]  = "l2"
+    perc: PerceptualConfig = field(default_factory=PerceptualConfig)
+
+
+
+@dataclass
+class MDLCriterionConfig:
+    beta:        float      = 1.0
+    K:           int        = 10
+    pix_weight:  float      = 1.0
+    pix_weight:  float      = 1.0
+    perc: PerceptualConfig = field(default_factory=PerceptualConfig)
 
 
 
