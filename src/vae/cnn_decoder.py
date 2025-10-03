@@ -15,8 +15,8 @@ class CNNDecoder(BaseDecoder):
     def __init__(
         self,
         cfg: CNNDecoderConfig, *,
-        in_name: str, latent_dim: int,
-        in_ch: int, in_h: int, in_w: int,
+        in_name: str,in_ch: int, 
+        in_h: int, in_w: int,
         out_h: int, out_w: int
     ):
         super().__init__()
@@ -36,11 +36,16 @@ class CNNDecoder(BaseDecoder):
         layers = []
         Act = lambda c: [Norm(self.cfg.norm_type, c), act(self.cfg.activation)]
 
-        for c_out, k, s, p in zip(self.cfg.channels, self.cfg.kernels, self.cfg.strides, self.cfg.paddings):
-            layers += [nn.ConvTranspose2d(c_in, c_out, k, s, p), *Act(c_out)]
-            c_in = c_out
-
-        layers += [nn.Conv2d(c_in, self.cfg.out_channels, 1, 1, 0), nn.Tanh()]
+        Ks, Ss, Ps, Cs = self.cfg.kernels, self.cfg.strides, self.cfg.paddings, self.cfg.channels
+        n = len(Cs)
+        for i, (c_out, k, s, p) in enumerate(zip(Cs, Ks, Ss, Ps)):
+            is_last = (i == n - 1)
+            if is_last:
+                layers += [nn.ConvTranspose2d(c_in, self.cfg.out_channels, k, s, p),
+                           nn.Tanh()]
+            else:
+                layers += [nn.ConvTranspose2d(c_in, c_out, k, s, p), *Act(c_out)]
+                c_in = c_out
         return nn.Sequential(*layers)
 
     def expects(self) -> Optional[Dict[str, int]]:

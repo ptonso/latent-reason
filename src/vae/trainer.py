@@ -15,7 +15,8 @@ from tqdm.auto import tqdm
 import matplotlib.pyplot as plt
 import pandas as pd
 
-from src.vae.config import TrainConfig
+from src.vae.config import TrainConfig, BetaVAEConfig
+from src.vae.beta_vae import BetaVAE
 from src.vae.dataset import ReconstructionDataset
 
 
@@ -41,6 +42,7 @@ class Trainer:
 
         self.device = torch.device(self.cfg.device)
         self.model.to(self.device)
+        self.model._device = self.device
 
         self.current_epoch    = 0
         self.best_fitness     = float('inf')
@@ -60,6 +62,18 @@ class Trainer:
         self.setup_optimizer(model)
         self.setup_scheduler()
 
+    @classmethod
+    def run(
+        cls, 
+        model_cfg: BetaVAEConfig,
+        train_cfg: TrainConfig, 
+        resume:bool
+        ):
+        device = torch.device(train_cfg.device)
+        model = BetaVAE(model_cfg, device=device)
+        trainer = cls(model, model_cfg, train_cfg)
+        trainer.train(resume=resume)
+        
 
     def setup_directories(self, resume: bool = False):
         base_root = Path("runs") / self.cfg.project_name
@@ -88,7 +102,7 @@ class Trainer:
     def setup_optimizer(self, model: nn.Module):
         opt = self.cfg.optimizer_type.lower()
         lr = self.cfg.lr
-        if self.cfg.scheduler == "onecucle":
+        if self.cfg.scheduler == "onecycle":
             skw = self.cfg.scheduler_kwargs
             lr = skw["max_lr"] / skw.get("div_factor", 25)
         if opt == "adamw":
@@ -187,7 +201,7 @@ class Trainer:
             base_beta: float = float(self.model.config.criterion.beta)
             frac: float = min(1.0, self.current_epoch / self.cfg.beta_warmup)
             beta_now: float = base_beta * frac
-            self.model.neck.beta = beta_now
+            self.model.crit.beta = beta_now
 
         s_total = torch.zeros((), device=self.device)
         s_recon = torch.zeros((), device=self.device)
@@ -199,7 +213,7 @@ class Trainer:
             ctx: Context = {}  # neck writes mu/logvar here
 
             logits: GenLogits = self.model(x, ctx)
-            losses = self.model.criterion(logits, x, ctx)
+            losses = self.model.crit(logits, x, ctx)
 
             total = losses['loss']
             recon = losses['loss/recon']
@@ -218,7 +232,7 @@ class Trainer:
             s_kld   = s_kld   + kld.detach()   * bs
             
             if (i % 25) == 0:  # throttle UI updates
-                pbar.set_postfix(beta=self.model.criterion.cfg.beta)
+                pbar.set_postfix(beta=self.model.crit.beta)
 
 
         n  = len(self.train_loader.dataset)
@@ -252,7 +266,7 @@ class Trainer:
                 x = x.to(self.device, non_blocking=True)
                 ctx: Context = {}
                 logits: GenLogits = self.model(x, ctx)
-                losses = self.model.criterion(logits, x, ctx)
+                losses = self.model.crit(logits, x, ctx)
 
                 total = losses['loss']
                 recon = losses['loss/recon']
@@ -265,7 +279,7 @@ class Trainer:
         
 
                 if (i % 50) == 0:
-                    pbar.set_postfix(beta=self.model.criterion.cfg.beta)
+                    pbar.set_postfix(beta=self.model.crit.cfg.beta)
 
         n  = len(self.val_loader.dataset)
         px = self.px
@@ -416,11 +430,11 @@ class Trainer:
                 else:
                     self.no_improve_count += 1
 
-                beta_info = f", β={self.model.criterion.cfg.beta:.3f}"
+                beta_info = f", β={self.model.crit.beta:.3f}"
                 print(
-                    f"Epoch {epoch:3d}/{self.cfg.max_epochs}: "
+                    f"Epoch {epoch:3d}/{self.cfg.max_epochs}: \n"
                     f"Train img={tr['recon_image']:.4f} (px={tr['recon_pixel']:.6f}), "
-                    f"KL img={tr['kld_image']:.4f} (dim={tr['kld_dim']:.6f}); "
+                    f"KL img={tr['kld_image']:.4f} (dim={tr['kld_dim']:.6f}); \n"
                     f"Val   img={val['recon_image']:.4f} (px={val['recon_pixel']:.6f}), "
                     f"KL img={val['kld_image']:.4f} (dim={val['kld_dim']:.6f}); "
                     f"LR={self.optimizer.param_groups[0]['lr']:.2e}{beta_info}"

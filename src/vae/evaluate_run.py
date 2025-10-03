@@ -13,8 +13,8 @@ from mpl_toolkits.mplot3d import Axes3D  # noqa: F401
 from torch.utils.data import DataLoader
 from sklearn.decomposition import PCA
 
-from src.vae.model.beta_vae import BetaVAE
-from src.vae.model.config import VAEConfig, EncoderConfig, DecoderConfig
+from src.vae.beta_vae import BetaVAE
+from src.vae.config import BetaVAEConfig, EncoderConfig, DecoderConfig, GaussianNeckConfig, BetaVAECriterionConfig
 from src.vae.dataset import ReconstructionDataset
 
 
@@ -49,10 +49,25 @@ def load_vae(run_dir: str):
     model_cfg = yaml.safe_load(open(run / "model_config.json"))
     train_cfg = yaml.safe_load(open(run / "train_config.json"))
 
+    configs = {
+        "encoder": EncoderConfig,
+        "decoder": DecoderConfig,
+        "criterion": BetaVAECriterionConfig,
+        "neck": GaussianNeckConfig
+    }
+
+    for name, cfg_cls in configs.item():
+        
+
     enc_cfg  = EncoderConfig(**model_cfg["encoder"])
     dec_cfg  = DecoderConfig(**model_cfg["decoder"])
+    crit_cfg = BetaVAECriterion(**model_cfg["criterion"])
+    neck_cfg = GaussianNeckConfig(**model_cfg["neck"])
     top_cfg  = {k: v for k, v in model_cfg.items() if k not in ("encoder", "decoder")}
-    vae_cfg  = VAEConfig(**top_cfg, encoder=enc_cfg, decoder=dec_cfg)
+    vae_cfg  = BetaVAEConfig(
+        **top_cfg, 
+        encoder=enc_cfg, decoder=dec_cfg
+        neck=neck_cfg, criterion=crit_cfg)
 
     device = torch.device(
         "cuda" if (vae_cfg.device == "auto" and torch.cuda.is_available()) else "cpu"

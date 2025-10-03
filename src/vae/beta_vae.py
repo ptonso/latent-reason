@@ -11,11 +11,8 @@ from src.vae.cnn_decoder import CNNDecoder, CNNDecoderConfig
 from src.vae.gaussian_neck import GaussianNeckConfig, GaussianNeck
 from src.vae.gaussian_loss import BetaVAECriterion, BetaVAECriterionConfig
 from src.vae.types import GenLogits, Context, FeatureDict, ModelBatch
-
-
 from src.vae.config import *
 
-from src.vae.trainer import Trainer
 
 T = TypeVar("T")
 
@@ -30,10 +27,11 @@ class BetaVAE(nn.Module):
     """
     NAME = "beta_vae"
 
-    def __init__(self, vae_cfg: BetaVAEConfig):
+    def __init__(self, vae_cfg: BetaVAEConfig, device: torch.device):
         super().__init__()
 
         self.config = vae_cfg
+        self.device = device
 
         self.img_size = vae_cfg.img_size
         H, W = _to_hw(self.img_size)
@@ -54,42 +52,36 @@ class BetaVAE(nn.Module):
             out_name=self.neck_name
             )
         self.dec  = CNNDecoder(
-            self.config.decoder, latent_dim=self.latent_dim, 
-            in_name=self.neck_name, in_ch=in_ch, in_h=in_h, in_w=in_w,
+            self.config.decoder, in_name=self.neck_name, 
+            in_ch=in_ch, in_h=in_h, in_w=in_w,
             out_h=H, out_w=W
             )
 
-        self.criterion = BetaVAECriterion(self.config.criterion)
+        self.crit = BetaVAECriterion(self.config.criterion)
+        
+        self.to(self.device)
+        
+        perc_source = self.config.criterion.perc_source
+        if perc_source == "encoder":
+            self.crit.init_perc(encoder=self.enc)
+        elif perc_source == "lpips":
+            self.crit.init_perc(device=self.device)
 
 
     def forward(self, x: Tensor, ctx: Context | None = None) -> GenLogits:
-        feats = self.enc(x, None)
-        feats = self.neck(feats, None)
+        if ctx is None:
+            ctx = {}
+        feats = self.enc(x, ctx)
+        feats = self.neck(feats, ctx)
         return self.dec(feats, ctx)
 
-    def training_step(self, batch: Any, batch_idx: int):
-        mb: ModelBatch = self.decode_batch(batch)
-        logits = self.forward(mb.x, None)
-        return self.criterion(logits, mb.x, None)
 
-    def validation_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0):
-        mb: ModelBatch = self.decode_batch(batch)
-        with torch.no_grad():
-            logits = self.forward(mb.x, None)
-            return self.criterion(logits, mb.x, None)
-
-    def predict_step(self, batch: Any, batch_idx: int):
-        mb: ModelBatch = self.decode_batch(batch)
-        with torch.no_grad():
-            return self.forward(mb.x, None)
-
-    def encode(self, x: Tensor) -> tuple[Tensor, Tensor]:
-        ctx: Context = {}
+    def encode(self, x: Tensor, ctx: Context = {}) -> tuple[Tensor, Tensor]:
         _ = self.neck(self.enc(x, None), ctx)
         return ctx["mu"], ctx["logvar"]
 
     def decode_batch(batch: Any):
-        mb = ModelBatch(x=batch, y=None, meta=None)
+        return ModelBatch(x=batch, y=None, meta=None)
 
     @staticmethod
     def sample_z(mu: Tensor, logvar: Tensor) -> Tensor:
@@ -99,8 +91,6 @@ class BetaVAE(nn.Module):
 
 
     def decode_from_z(self, z: Tensor) -> GenLogits:
-        # Our symmetric neck’s decoder MLP expects [mu, logvar].
-        # When given a z, use (mu=z, logvar=0) as a practical default.
         zero = torch.zeros_like(z)
         feats = {self.neck_name: self.neck.mlp_dec(torch.cat([z, zero], dim=1)).view(
             z.size(0), self.enc.out_channels()[self.enc_name], self.enc.out_h, self.enc.out_w
@@ -119,14 +109,25 @@ class BetaVAE(nn.Module):
 
 
 
-    def run(self, train_cfg: TrainConfig, resume:bool) -> Union[nn.Module, Trainer]:
+    # --- NOT USED ---
 
-        if train_cfg is None:
-            train_cfg = TrainConfig(data_yaml=train_cfg.data_yaml)
+    def training_step(self, batch: Any, batch_idx: int):
+        mb: ModelBatch = self.decode_batch(batch)
+        ctx: Context = {}
+        logits = self.forward(mb.x, ctx)
+        return self.crit(logits, mb.x, ctx)
 
-        trainer = Trainer(self, self.config, train_cfg)
-        trainer.train(resume=resume)
-        return trainer
+    def validation_step(self, batch: Any, batch_idx: int, dataloader_idx: int = 0):
+        mb: ModelBatch = self.decode_batch(batch)
+        ctx: Context = {}
+        with torch.no_grad():
+            logits = self.forward(mb.x, ctx)
+            return self.crit(logits, mb.x, ctx)
+
+    def predict_step(self, batch: Any, batch_idx: int):
+        mb: ModelBatch = self.decode_batch(batch)
+        with torch.no_grad():
+            return self.forward(mb.x, None)
 
 
 

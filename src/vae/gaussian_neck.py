@@ -1,5 +1,5 @@
 from dataclasses import dataclass
-from typing import Dict
+from typing import Dict, Optional
 import torch
 import torch.nn as nn
 
@@ -27,9 +27,10 @@ class GaussianNeck(BaseNeck):
         self._st = {out_name: 1}
 
         flat = in_ch * in_h * in_w
-        d2   = 2 * cfg.latent_dim
+        d    = cfg.latent_dim
+        d2   = 2 * d
         self.mlp_enc = self._make_mlp(in_dim=flat, out_dim=d2)
-        self.mlp_dec = self._make_mlp(in_dim=d2,   out_dim=flat)
+        self.mlp_dec = self._make_mlp(in_dim=d,    out_dim=flat)
         self.apply(self._init_weights)
 
     def _make_mlp(self, in_dim: int, out_dim: int) -> nn.Sequential:
@@ -61,15 +62,18 @@ class GaussianNeck(BaseNeck):
     def out_channels(self) -> Dict[str, int]: return dict(self._oc)
     def strides(self)      -> Dict[str, int]: return dict(self._st)
 
-    def forward(self, feats: FeatureDict, ctx: Context | None = None) -> FeatureDict:
-        x  = feats[self.in_name].flatten(1)           # (B, C*H*W)
-        s  = self.mlp_enc(x)                          # (B, 2D)
-        mu, lv = s.chunk(2, dim=1)                    # (B,D), (B,D)
+    def forward(self, feats: FeatureDict, ctx: Optional[Context] = None) -> FeatureDict:
+        x = feats[self.in_name].flatten(1)   # (B, C*H*W)
+        s = self.mlp_enc(x)                  # (B, 2D)
+        mu, logvar = s.chunk(2, dim=1)       # (B,D), (B,D)
+
         if ctx is not None:
-            ctx["mu"], ctx["logvar"], ctx["free_n"] = mu, lv, self.cfg.free_nats
-        s_dec   = torch.cat([mu, lv], dim=1)          # (B, 2D)
-        feat    = self.mlp_dec(s_dec).view(x.size(0), self.in_ch, self.in_h, self.in_w)
+            ctx["mu"], ctx["logvar"], ctx["free_n"] = mu, logvar, self.cfg.free_nats
+
+        z    = self._reparameterize(mu, logvar) # (B, D)
+        feat = self.mlp_dec(z).view(x.size(0), self.in_ch, self.in_h, self.in_w)
         return {self.out_name: feat}
+
 
     @staticmethod
     def truncated_normal_(tensor: torch.Tensor, mean: float = 0.0, std: float = 0.02):
