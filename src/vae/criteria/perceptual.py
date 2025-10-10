@@ -30,7 +30,7 @@ class PerceptualLoss:
         features_fn: Optional[Callable[[Tensor], Dict[str, Tensor]]] = None,
     ) -> None:
         pcfg = self.cfg
-        if pcfg.source == "none" or pcfg.weight == 0.0:
+        if pcfg.source == "none" or pcfg.perc_weight == 0.0:
             self.enabled = False
             self._fn = None
             self._to3 = None

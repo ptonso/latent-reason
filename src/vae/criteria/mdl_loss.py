@@ -1,4 +1,4 @@
-from dataclass import dataclass
+from dataclasses import dataclass
 from typing import Mapping, Optional, Any, Callable, Dict, Tuple
 import copy
 import torch
@@ -7,13 +7,9 @@ import torch.nn.functional as F
 from torch import Tensor
 
 from src.vae.types import GenLogits, Context
-from src.vae.base  import BaseCriterion, LossDict
-from src.vae.config import MDLCriterionConfig
-from src.vae.perceptual import PerceptualLoss
+from src.vae.config import MDLReconConfig
 
-
-
-class MDLCriterion(BaseCriterion):
+class MDLRecon(nn.Module):
     """
     Mixture of Discretized Logitstics (MDL/DMOL) recon + KL (+ optional perceptual)
 
@@ -32,14 +28,11 @@ class MDLCriterion(BaseCriterion):
                             where σ is the logistic CDF. We compute in log-space with clamping for stability
     """
 
-    def __init__(self, cfg: MDLCriterionConfig):
+    def __init__(self, cfg: MDLReconConfig):
         super().__init__()
-        self.cfg = cfg
-        self.beta = float(cfg.beta)
         self.K: int = int(cfg.K)
         # 8-bit discretization over [-1,1]
         self.delta: float = 2.0 / 255.0
-        self.perc = PerceptualLoss(cfg.perc)
 
 
     def _split_params(self, params: Tensor) -> Tuple[Tensor, Tensor, Tensor]:
@@ -82,10 +75,10 @@ class MDLCriterion(BaseCriterion):
         p = (cdf_plus - cdf_minus).clamp(min=1e-12)
 
         log_p_ch = torch.log(p)
-        log_p    = log_p_ch.sum(dim=1)
-        return log_p
+        return log_p_ch.sum(dim=1)
 
-    def _nll(self, params: Tensor, x: Tensor) -> Tensor:
+
+    def recon_loss(self, params: Tensor, x: Tensor) -> Tensor:
         """
         Negative log-likelihood with mixture over components.
         """
@@ -97,55 +90,10 @@ class MDLCriterion(BaseCriterion):
         return nll
 
 
-    def _kld(self, mu: Tensor, logvar: Tensor, free_nats: float) -> Tensor:
-        kl = 0.5 * (mu.pow(2) + logvar.exp() - logvar - 1.0)
-        kl = torch.clamp(kl - free_nats, min=0.0)
-        return kl.sum(1).mean()
-
-    def forward(
-        self,
-        logits: GenLogits,
-        target: Any,
-        ctx: Optional[Context] = None
-    ) -> LossDict:
-        
-        x = target.img if hasattr(target, "img") else target
-        mdl = self._nll(logits.img, x)
-
-        perc = x.new_zeros(())
-        if self.perc.enabled:
-            with torch.no_grad():
-                hatx = self._mixture_mean(logits.img)
-            perc = self.perc(hatx, x)
-        
-        rec = float(self.cfg.pix_weight) * mdl + float(self.cfg.perc_weight) * perc
-
-        if ctx is None or "mu" not in ctx:
-            z = torch.zeros((), device=logits.img.device)
-            return {"loss": rec, "loss/recon": rec, "loss/kld": z}
-        
-        kld = self._kld(ctx["mu"], ctx["logvar"], ctx.get("free_n", 0.0))
-        total = rec + self.beta * kld
-        return {"loss": total, "loss/recon": rec, "loss/kld": kld}
-
 
     @torch.no_grad()
-    def predict(self, logits: GenLogits, ctx: Optional[Context] = None):
-        """
-        Deterministic reconstruction for visualization: mixture MEAN per channel,
-        then map [-1,1] -> [0,1].
-        """
-        hatx = self._mixture_mean(logits.img) # (B,3,H,W) in [-1,1]
+    def mean_image(self, params: Tensor) -> Tensor:
+        pi_logits, means, _ = self._split(params)
+        pi = torch.softmax(pi_logits, dim=1)  # (B,K,H,W)
+        return (pi.unsqueeze(1) * means).sum(dim=2).clamp(-1, 1)  # (B,3,H,W)
 
-    
-    def _mixture_mean(self, params: Tensor) -> Tensor:
-        """
-        mixture mean per channel: E[x] = Σ_k π_k μ_k (independent channels)
-        returns tensor in [-1,1]
-        """
-        B, C, H, W = params.shape
-        K = self.K
-        pi_logits, means, _ = self._split_params(params)
-        pi = torch.softmax(pi_logits, dim=1)
-        hatx = (pi.unsqueeze(1) * means).sum(dim=2)
-        return hatx

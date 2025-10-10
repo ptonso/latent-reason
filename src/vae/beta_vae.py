@@ -9,7 +9,7 @@ from torch import Tensor
 from src.vae.cnn_encoder import CNNEncoder, CNNEncoderConfig
 from src.vae.cnn_decoder import CNNDecoder, CNNDecoderConfig
 from src.vae.gaussian_neck import GaussianNeckConfig, GaussianNeck
-from src.vae.gaussian_loss import BetaVAECriterion, BetaVAECriterionConfig
+from src.vae.criteria.betavae_loss import BetaVAECriterion
 from src.vae.types import GenLogits, Context, FeatureDict, ModelBatch
 from src.vae.config import *
 
@@ -61,7 +61,7 @@ class BetaVAE(nn.Module):
         
         self.to(self.device)
         
-        perc_source = self.config.criterion.perc_source
+        perc_source = self.config.criterion.perc.source
         if perc_source == "encoder":
             self.crit.init_perc(encoder=self.enc)
         elif perc_source == "lpips":

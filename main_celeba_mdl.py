@@ -7,6 +7,7 @@ def main():
 
     set_seed(42, deterministic=False)
 
+    K = 10
 
     enc = CNNEncoderConfig(
         in_channels = 3,
@@ -29,7 +30,7 @@ def main():
     )
 
     dec = CNNDecoderConfig(
-        out_channels = 3,
+        out_channels = 7 * K,
         channels     = [ 256, 192, 128,  64],
         kernels      = [   4,   4,   4,   4],
         strides      = [   2,   2,   2,   2],
@@ -40,7 +41,7 @@ def main():
 
 
     perc = PerceptualConfig(
-        source       = "lpips",
+        source       = "none",
         perc_weight  = 1.0,
         pix_weight   = 1.0,
         use_l1       = True,
@@ -53,13 +54,13 @@ def main():
     )
 
     mdl = MDLReconConfig(
-        K            = 10
+        K            = K
     )
 
     criterion = BetaVAECriterionConfig(
         beta         = 5.0,
         perc         = perc,
-        recon        = gauss
+        recon        = mdl
     )
 
     vae_cfg = BetaVAEConfig(
@@ -75,7 +76,7 @@ def main():
 
     train_cfg = TrainConfig(
         lr               = 1e-4,
-        batch_size       = 512,
+        batch_size       = 128,
         max_epochs       = 100,
         beta_warmup      = 20,
         patience         = 10,
@@ -85,7 +86,7 @@ def main():
         num_workers      = 4,
         data_yaml        = "data/01--clean/celebA/data.yaml",
         project_name     = "celebA-vae",
-        experiment_name  = "beta5",
+        experiment_name  = "beta5-mdl",
     )
 
     Trainer.run(model_cfg=vae_cfg, train_cfg=train_cfg, resume=False)

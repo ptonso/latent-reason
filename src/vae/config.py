@@ -2,7 +2,6 @@
 from dataclasses import dataclass, field
 from typing import *
 
-
 @dataclass
 class CNNDecoderConfig:
     out_channels: int        = 3
@@ -33,46 +32,45 @@ class CNNEncoderConfig:
     norm_type:   str        = "layer"
 
 
+@dataclass
+class GaussianReconConfig:
+    huber_delta: float      = 1.0
+    recon_type:  Literal["l1","l2","smooth_l1"]  = "l2"
+
+
+@dataclass
+class MDLReconConfig:
+    K: int        = 10
 
 @dataclass
 class PerceptualConfig:
-    perc_source: Literal["none", "lpips", "encoder"] = "none"
-    perc_weight: float                               = 1.0
-    perc_use_l1: bool                                = True
-    lpips_net:   Literal["alex", "vgg", "squeeze"]   = "alex"
-    enc_layers: Optional[Mapping[str, float]]       = None
-
-
-
-@dataclass
-class GaussianCriterionConfig:
-    beta:        float      = 2.0
-    huber_delta: float      = 1.0
-    pix_weight:  float      = 1.0
-    recon_type:  Literal["l1","l2","smooth_l1"]  = "l2"
-    perc: PerceptualConfig = field(default_factory=PerceptualConfig)
-
+    pix_weight:  float                             = 1.0
+    perc_weight: float                             = 1.0
+    use_l1: bool                                   = True
+    source: Literal["none", "lpips", "encoder"]    = "none"
+    lpips_net:   Literal["alex", "vgg", "squeeze"] = "alex"
+    enc_layers: Optional[Mapping[str, float]]      = None
 
 
 @dataclass
-class MDLCriterionConfig:
-    beta:        float      = 1.0
-    K:           int        = 10
-    pix_weight:  float      = 1.0
-    pix_weight:  float      = 1.0
+class BetaVAECriterionConfig:
+    beta: float = 2.0
     perc: PerceptualConfig = field(default_factory=PerceptualConfig)
-
-
+    recon: Union[
+        GaussianReconConfig,
+        MDLReconConfig
+     ] = field(default_factory=GaussianReconConfig)
+    
 
 @dataclass
 class BetaVAEConfig():
     img_size:  Union[int, Tuple[int, int]] = 64
     enc_name: str = "s32"
     neck_name: str = "z"
-    encoder:   CNNEncoderConfig       = field(default_factory=CNNEncoderConfig)
-    neck:      GaussianNeckConfig     = field(default_factory=GaussianNeckConfig)
-    decoder:   CNNDecoderConfig       = field(default_factory=CNNDecoderConfig)
-    criterion: BetaVAECriterionConfig = field(default_factory=BetaVAECriterionConfig)
+    encoder:   CNNEncoderConfig        = field(default_factory=CNNEncoderConfig)
+    neck:      GaussianNeckConfig      = field(default_factory=GaussianNeckConfig)
+    decoder:   CNNDecoderConfig        = field(default_factory=CNNDecoderConfig)
+    criterion: BetaVAECriterionConfig  = field(default_factory=BetaVAECriterionConfig)
 
 
 
