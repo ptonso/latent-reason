@@ -208,7 +208,7 @@ class Trainer:
         s_kld   = torch.zeros((), device=self.device)
         pbar = tqdm(self.train_loader, desc=f"Epoch {self.current_epoch}/{self.cfg.max_epochs} [Train]", leave=False)
 
-        for i, (x, _) in enumerate(pbar):
+        for i, (x, label, is_label) in enumerate(pbar):
             x = x.to(self.device, non_blocking=True)
             ctx: Context = {}  # neck writes mu/logvar here
 
