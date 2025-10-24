@@ -1,37 +1,29 @@
 import os
+import random
 import requests
 from pathlib import Path
+from multiprocessing import Pool
 import h5py
 from PIL import Image
 import yaml
-import random
 from tqdm.auto import tqdm
-from multiprocessing import Pool
+import numpy as np
 
-def download_3dshapes(
-    output_dir: str = "data/00--raw",
-    url: str = "https://storage.googleapis.com/3d-shapes/3dshapes.h5"
-) -> None:
-    """
-    Fetches 3dshapes.h5 from Google Cloud Storage into `output_dir/3dshapes.h5`.
-    Uses HTTP streaming to avoid high memory usage.
-    """
+FACTORS = ["floor_hue", "wall_hue", "object_hue", "scale", "shape", "orientation"]
+
+def download_3dshapes(output_dir: str = "data/00--raw/3dshapes", url: str = "https://storage.googleapis.com/3d-shapes/3dshapes.h5") -> Path:
     out_root = Path(output_dir)
     out_root.mkdir(parents=True, exist_ok=True)
-
     dst = out_root / "3dshapes.h5"
     if dst.exists():
-        print(f"✅ Already downloaded: {dst}")
-        return
-
-    print(f"⏬ Downloading 3D Shapes HDF5 from {url}…")
+        return dst
     with requests.get(url, stream=True) as r:
         r.raise_for_status()
         with open(dst, "wb") as f:
-            for chunk in r.iter_content(chunk_size=4*1024*1024):
+            for chunk in r.iter_content(chunk_size=128 * 1024 * 1024):
                 if chunk:
                     f.write(chunk)
-    print(f"💾 Saved to {dst}")
+    return dst
 
 def _init_worker(h5_path: str):
     global _IMAGES
@@ -40,78 +32,74 @@ def _init_worker(h5_path: str):
 def _save_index(args):
     idx, out_file = args
     arr = _IMAGES[idx]
-    Image.fromarray(arr).save(out_file)
+    Image.fromarray(arr).save(out_file, format="JPEG", quality=95, subsampling=0)
 
 def clean_3dshapes(
-    input_dir: str = "data/00--raw",
-    output_dir: str = "data/01--clean",
+    input_dir: str = "data/00--raw/3dshapes",
+    output_dir: str = "data/01--clean/3dshapes",
     train_ratio: float = 0.8,
-    val_ratio:   float = 0.1,
+    val_ratio: float = 0.1,
     seed: int = 42,
-    num_workers: int = None
+    num_workers: int | None = None
 ) -> None:
-    """
-    Loads `input_dir/3dshapes.h5`, splits images into train/val/test
-    according to ratios, and parallel-saves PNGs using multiprocessing.
-    Finally writes `output_dir/data.yaml`.
-    """
     h5_file = Path(input_dir) / "3dshapes.h5"
     if not h5_file.exists():
-        raise FileNotFoundError(f"Missing HDF5 at {h5_file}")
+        raise FileNotFoundError(h5_file)
 
     out_root = Path(output_dir)
     splits = ["train", "val", "test"]
-    for split in splits:
-        (out_root / split).mkdir(parents=True, exist_ok=True)
+    for s in splits:
+        (out_root / s / "images").mkdir(parents=True, exist_ok=True)
+        (out_root / s / "labels").mkdir(parents=True, exist_ok=True)
 
-    # Read and shuffle indices
     with h5py.File(h5_file, "r") as f:
         total = f["images"].shape[0]
+        labels = f["labels"][:]
+
     rng = random.Random(seed)
     indices = list(range(total))
     rng.shuffle(indices)
 
     n_train = int(total * train_ratio)
-    n_val   = int(total * val_ratio)
+    n_val = int(total * val_ratio)
     split_idx = {
         "train": indices[:n_train],
-        "val":   indices[n_train:n_train + n_val],
-        "test":  indices[n_train + n_val:]
+        "val": indices[n_train:n_train + n_val],
+        "test": indices[n_train + n_val:],
     }
 
-    # Prepare tasks
     tasks = []
     for split, idx_list in split_idx.items():
-        dest = out_root / split
-        print(f"💾 Queueing {len(idx_list)} images for {split}")
-        for i, j in enumerate(idx_list):
-            out_path = dest / f"{i:06d}.png"
-            tasks.append((j, out_path))
+        for i, j in enumerate(idx_list, start=1):
+            out_path = out_root / split / "images" / f"{i:06d}.jpg"
+            tasks.append((j, str(out_path)))
 
-    # Parallel save
-    with Pool(
-        processes=num_workers,
-        initializer=_init_worker,
-        initargs=(str(h5_file),)
-    ) as pool:
-        list(tqdm(pool.imap_unordered(_save_index, tasks), total=len(tasks), desc="Saving"))
+    with Pool(processes=num_workers, initializer=_init_worker, initargs=(str(h5_file),)) as pool:
+        list(tqdm(pool.imap_unordered(_save_index, tasks), total=len(tasks), desc="Saving images"))
 
-    # Emit data.yaml
-    cfg = {s: str(out_root / s) for s in splits}
+    for split, idx_list in split_idx.items():
+        lbl_dir = out_root / split / "labels"
+        for i, j in enumerate(idx_list, start=1):
+            line = " ".join(str(int(x)) for x in labels[j].tolist())
+            with open(lbl_dir / f"{i:06d}.txt", "w") as f:
+                f.write(line + "\n")
+
+    data_cfg = {
+        "train": str((out_root / "train" / "images").resolve()),
+        "val": str((out_root / "val" / "images").resolve()),
+        "test": str((out_root / "test" / "images").resolve()),
+        "train_labels": str((out_root / "train" / "labels").resolve()),
+        "val_labels": str((out_root / "val" / "labels").resolve()),
+        "test_labels": str((out_root / "test" / "labels").resolve()),
+        "factors": FACTORS,
+    }
     with open(out_root / "data.yaml", "w") as f:
-        yaml.safe_dump(cfg, f)
-
-    print(f"✅ 3D Shapes cleaned under {out_root} (data.yaml created)")
-
-
+        yaml.safe_dump(data_cfg, f, sort_keys=False)
 
 if __name__ == "__main__":
-
     raw_path = "data/00--raw/3dshapes"
     clean_path = "data/01--clean/3dshapes"
-
-
-    download_3dshapes(output_dir=raw_path)
+    # download_3dshapes(raw_path)
     clean_3dshapes(
         input_dir=raw_path,
         output_dir=clean_path,

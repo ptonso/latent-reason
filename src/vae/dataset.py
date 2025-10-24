@@ -20,13 +20,13 @@ class ReconstructionDataset(Dataset):
     
     def __init__(
         self,
-        data_path: str,
-        labels_path: str = None,
-        img_size: int = 224,
-        channels: int = 3,
-        augment: bool = False,
+        data_path:   str,
+        labels_path: str  = None,
+        img_size:    int  = 224,
+        channels:    int  = 3,
+        augment:     bool = False,
         extensions: Tuple[str, ...] = ('.jpg', '.jpeg', '.png', '.bmp', '.tiff'),
-        supervision_rate: float = 1.0
+        supervision_rate: float = 0.0
     ):
         self.data_path  = Path(data_path)
         self.has_labels = labels_path is not None
@@ -91,7 +91,7 @@ class ReconstructionDataset(Dataset):
         tfms.append(transforms.ToTensor())
         tfms.append(transforms.Normalize(
             mean=[0.5]*self.channels,
-            std=[0.5]*self.channels)) # normalize to [-1, 1]
+            std =[0.5]*self.channels)) # normalize to [-1, 1]
 
         self.transform = transforms.Compose(tfms)
             
@@ -101,21 +101,22 @@ class ReconstructionDataset(Dataset):
     def __getitem__(self, index: int) -> GenTargets:
         """Load an image (any mode) and convert it to `channels`-C, tensor in [-1,1]."""
         path = self.image_paths[index]
-        img  = Image.open(path)          # no manual .convert( ) here
+        img  = Image.open(path)
         if self.transform:
             img = self.transform(img)
 
-        if self.has_labels and index in self.labels:
-            labels = np.array([self.labels_path[index, :]])
-            is_labeled = True
-        else:
-            labels = self.empty_label
-            is_labeled = False
+        meta = {"labels" : None, "is_labeled" : None}
         
-        meta = {"labels" : labels, "is_labeled" : is_labeled}
+        if self.supervision_rate > 0.0:
+            if self.has_labels and index in self.labels:
+                labels = np.array([self.labels_path[index, :]])
+                is_labeled = True
+            else:
+                labels = self.empty_label
+                is_labeled = False    
+            meta = {"labels" : labels, "is_labeled" : is_labeled}
+
         target = GenTargets(img, meta)
         
         return target
-        #return img, 0 
-
 

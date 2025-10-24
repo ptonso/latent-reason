@@ -14,12 +14,12 @@ class CNNDecoderConfig:
 
 @dataclass
 class GaussianNeckConfig:
-    latent_dim:  int   = 64
-    fc_layers:   int   = 2
-    fc_units:    int   = 512
-    norm_type:   str   = "layer"
-    activation:  str   = "silu"
-    free_nats:   float = 0.5
+    latent_dim:  int         = 64
+    fc_layers:   int         = 2
+    fc_units:    int         = 512
+    norm_type:   str         = "layer"
+    activation:  str         = "silu"
+    free_nats:   float       = 0.5
 
 @dataclass
 class CNNEncoderConfig:
@@ -40,7 +40,7 @@ class GaussianReconConfig:
 
 @dataclass
 class MDLReconConfig:
-    K: int        = 10
+    K:           int        = 10
 
 @dataclass
 class PerceptualConfig:
@@ -48,7 +48,7 @@ class PerceptualConfig:
     perc_weight: float                             = 1.0
     use_l1: bool                                   = True
     source: Literal["none", "lpips", "encoder"]    = "none"
-    lpips_net:   Literal["alex", "vgg", "squeeze"] = "alex"
+    lpips_net: Literal["alex", "vgg", "squeeze"]   = "alex"
     enc_layers: Optional[Mapping[str, float]]      = None
 
 @dataclass

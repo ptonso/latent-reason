@@ -56,7 +56,9 @@ def main():
         K            = 10
     )
 
-    ssuper = SemiSupervisedConfig()
+    ssuper = SemiSupervisedConfig(
+        supervision_rate = 
+    )
 
     criterion = BetaVAECriterionConfig(
         beta         = 5.0,

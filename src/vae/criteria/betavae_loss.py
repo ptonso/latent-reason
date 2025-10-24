@@ -33,7 +33,7 @@ class BetaVAECriterion(BaseCriterion):
 
         self.perc = PerceptualLoss(cfg.perc)
 
-        self.ssuper = SemiSupervisedLoss(cfg.ssuper)
+        self.supervision = SemiSupervisedLoss(cfg.ssuper)
 
     def init_perc(
         self,
@@ -76,8 +76,11 @@ class BetaVAECriterion(BaseCriterion):
             z = torch.zeros((), device=logits.img.device)
             return {"loss": rec, "loss/recon": rec, "loss/kld": z}
         
-        if self.semisuper.enabled:
-            semisupervised_loss = self.semisuper(ctx["mu"], ctx["logvar"], target["labels"], target["is_labeld"])
+        # Semisupervised term
+        if self.supervision.enabled:
+            semisupervised_loss = self.supervision(
+                ctx["mu"], target["labels"], target["is_labeld"]
+                )
 
         kld = self._kld(ctx["mu"], ctx["logvar"], ctx.get("free_n", 0.0))
         total = rec + self.beta * kld + semisupervised_loss
