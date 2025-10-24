@@ -60,7 +60,7 @@ class BetaVAECriterion(BaseCriterion):
 
         # perceptual term
         if self.perc.enabled:
-            if isinstance(self.inner, _MDLRecon):
+            if isinstance(self.inner, MDLRecon):
                 with torch.no_grad():
                     hatx = self._mean_image_for_perc(logits.img)
             else:
