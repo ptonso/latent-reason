@@ -18,6 +18,7 @@ import pandas as pd
 from src.vae.config import TrainConfig, BetaVAEConfig
 from src.vae.beta_vae import BetaVAE
 from src.vae.dataset import ReconstructionDataset
+from src.vae.types import Context, GenLogits
 
 
 def _to_num(t: torch.Tensor) -> float: # robust .item() for bf16/fp16
@@ -208,7 +209,7 @@ class Trainer:
         s_kld   = torch.zeros((), device=self.device)
         pbar = tqdm(self.train_loader, desc=f"Epoch {self.current_epoch}/{self.cfg.max_epochs} [Train]", leave=False)
 
-        for i, (x, label, is_label) in enumerate(pbar):
+        for i, x in enumerate(pbar):
             x = x.to(self.device, non_blocking=True)
             ctx: Context = {}  # neck writes mu/logvar here
 
@@ -262,7 +263,7 @@ class Trainer:
         pbar = tqdm(self.val_loader, desc=f"Epoch {self.current_epoch}/{self.cfg.max_epochs} [Val]", leave=False)
 
         with torch.no_grad():
-            for i, (x, _) in enumerate(pbar):
+            for i, x in enumerate(pbar):
                 x = x.to(self.device, non_blocking=True)
                 ctx: Context = {}
                 logits: GenLogits = self.model(x, ctx)

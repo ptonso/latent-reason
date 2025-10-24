@@ -56,10 +56,13 @@ def main():
         K            = 10
     )
 
+    ssuper = SemiSupervisedConfig()
+
     criterion = BetaVAECriterionConfig(
         beta         = 5.0,
         perc         = perc,
-        recon        = gauss
+        recon        = gauss,
+        ssuper       = ssuper
     )
 
     vae_cfg = BetaVAEConfig(
