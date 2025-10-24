@@ -51,6 +51,9 @@ class PerceptualConfig:
     lpips_net:   Literal["alex", "vgg", "squeeze"] = "alex"
     enc_layers: Optional[Mapping[str, float]]      = None
 
+@dataclass
+class SemiSupervisedConfig:
+    ...
 
 @dataclass
 class BetaVAECriterionConfig:
@@ -60,6 +63,7 @@ class BetaVAECriterionConfig:
         GaussianReconConfig,
         MDLReconConfig
      ] = field(default_factory=GaussianReconConfig)
+    ssuper: SemiSupervisedConfig = field(default_factory=SemiSupervisedConfig)
     
 
 @dataclass

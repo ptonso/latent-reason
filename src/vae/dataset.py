@@ -8,6 +8,8 @@ import h5py
 import pandas as pd
 import numpy as np
 
+from src.vae.types import GenTargets
+
 
 def convert_rgb(img):
     return img.convert("RGB")
@@ -96,7 +98,7 @@ class ReconstructionDataset(Dataset):
     def __len__(self) -> int:
         return len(self.image_paths)
         
-    def __getitem__(self, index: int):
+    def __getitem__(self, index: int) -> GenTargets:
         """Load an image (any mode) and convert it to `channels`-C, tensor in [-1,1]."""
         path = self.image_paths[index]
         img  = Image.open(path)          # no manual .convert( ) here
@@ -109,9 +111,11 @@ class ReconstructionDataset(Dataset):
         else:
             labels = self.empty_label
             is_labeled = False
-            
-
-        return img, labels, is_labeled
+        
+        meta = {"labels" : labels, "is_labeled" : is_labeled}
+        target = GenTargets(img, meta)
+        
+        return target
         #return img, 0 
 
 

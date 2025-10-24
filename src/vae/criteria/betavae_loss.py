@@ -11,6 +11,7 @@ from src.vae.base import BaseCriterion, LossDict
 from src.vae.criteria.gaussian_loss import GaussianRecon
 from src.vae.criteria.mdl_loss import MDLRecon
 from src.vae.criteria.perceptual import PerceptualLoss
+from src.vae.criteria.semisupervised import SemiSupervisedLoss
 from src.vae.config import BetaVAECriterionConfig, GaussianReconConfig, MDLReconConfig
 
 
@@ -32,6 +33,8 @@ class BetaVAECriterion(BaseCriterion):
 
         self.perc = PerceptualLoss(cfg.perc)
 
+        self.ssuper = SemiSupervisedLoss(cfg.ssuper)
+
     def init_perc(
         self,
         *,
@@ -51,7 +54,7 @@ class BetaVAECriterion(BaseCriterion):
     def _mean_image_for_perc(self, logits_img: Tensor) -> Tensor:
         return self.inner.mean_image(logits_img)
 
-    def forward(self, logits: GenLogits, target: Any, ctx: Optional[Context] = None) -> LossDict:
+    def forward(self, logits: GenLogits, target: GenTargets, ctx: Optional[Context] = None) -> LossDict:
         x = target.img if hasattr(target, "img") else target
 
         # recon term
@@ -72,9 +75,12 @@ class BetaVAECriterion(BaseCriterion):
         if ctx is None or ("mu" not in ctx or "logvar" not in ctx):
             z = torch.zeros((), device=logits.img.device)
             return {"loss": rec, "loss/recon": rec, "loss/kld": z}
+        
+        if self.semisuper.enabled:
+            semisupervised_loss = self.semisuper(ctx["mu"], ctx["logvar"], target["labels"], target["is_labeld"])
 
         kld = self._kld(ctx["mu"], ctx["logvar"], ctx.get("free_n", 0.0))
-        total = rec + self.beta * kld
+        total = rec + self.beta * kld + semisupervised_loss
         return {"loss": total, "loss/recon": rec, "loss/kld": kld}
 
 
