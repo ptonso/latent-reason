@@ -1,18 +1,16 @@
 from collections import OrderedDict
 from dataclasses import dataclass, field
-from typing import Any, Dict, List, Union, Optional, Tuple, OrderedDict as OD
+from typing import NamedTuple, Any, Dict, List, Union, Optional, Tuple, OrderedDict as OD
 
 import torch
 from torch import Tensor
 
 
-@dataclass
-class GenTargets:
+class GenTargets(NamedTuple):
     img:  torch.Tensor
     meta: Dict[str, Any] = field(default_factory=dict)
 
-@dataclass
-class GenLogits:
+class GenLogits(NamedTuple):
     img:  torch.Tensor
     meta: Dict[str, Any] = field(default_factory=dict)
 

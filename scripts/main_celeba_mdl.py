@@ -7,29 +7,30 @@ def main():
 
     set_seed(42, deterministic=False)
 
+    K = 10
 
     enc = CNNEncoderConfig(
-        in_channels  = 3,
+        in_channels = 3,
         channels     = [  64, 128, 192, 256],
         kernels      = [   4,   4,   4,   4],
         strides      = [   2,   2,   2,   2],
         paddings     = [   1,   1,   1,   1],
-        activation   = "relu",
-        norm_type    = "none",
+        activation  = "relu",
+        norm_type   = "none",
     )
 
 
     neck = GaussianNeckConfig(
-        latent_dim   = 64,
-        fc_layers    = 2,
-        fc_units     = 512,
-        norm_type    = "relu",
-        activation   = "none",
-        free_nats    = 0.5,
+        latent_dim  = 64,
+        fc_layers   = 2,
+        fc_units    = 512,
+        norm_type   = "relu",
+        activation  = "none",
+        free_nats   = 0.5,
     )
 
     dec = CNNDecoderConfig(
-        out_channels = 3,
+        out_channels = 7 * K,
         channels     = [ 256, 192, 128,  64],
         kernels      = [   4,   4,   4,   4],
         strides      = [   2,   2,   2,   2],
@@ -38,28 +39,13 @@ def main():
         norm_type    = "none",
     )
 
-
-    perc = PerceptualConfig(
-        source       = "lpips",
-        perc_weight  = 1.0,
-        pix_weight   = 1.0,
-        use_l1       = True,
-        lpips_net    = "alex",
-    )
-
-    gauss = GaussianReconConfig(
-        recon_type   = "l2",
-        huber_delta  = 1.0,
-    )
-
     mdl = MDLReconConfig(
-        K            = 10
+        K            = K
     )
 
     criterion = BetaVAECriterionConfig(
         beta         = 5.0,
-        perc         = perc,
-        recon        = gauss
+        recon        = mdl
     )
 
     vae_cfg = BetaVAEConfig(
@@ -75,7 +61,7 @@ def main():
 
     train_cfg = TrainConfig(
         lr               = 1e-4,
-        batch_size       = 512,
+        batch_size       = 128,
         max_epochs       = 100,
         beta_warmup      = 20,
         patience         = 10,
@@ -85,7 +71,7 @@ def main():
         num_workers      = 4,
         data_yaml        = "data/01--clean/celebA/data.yaml",
         project_name     = "celebA-vae",
-        experiment_name  = "beta5-perc",
+        experiment_name  = "beta5-mdl",
     )
 
     Trainer.run(model_cfg=vae_cfg, train_cfg=train_cfg, resume=False)

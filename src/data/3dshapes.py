@@ -32,7 +32,7 @@ def _init_worker(h5_path: str):
 def _save_index(args):
     idx, out_file = args
     arr = _IMAGES[idx]
-    Image.fromarray(arr).save(out_file, format="JPEG", quality=95, subsampling=0)
+    Image.fromarray(arr).save(out_file, format="JPEG", quality=95, subsampling=0, optimize=False)
 
 def clean_3dshapes(
     input_dir: str = "data/00--raw/3dshapes",
@@ -68,21 +68,24 @@ def clean_3dshapes(
         "test": indices[n_train + n_val:],
     }
 
-    tasks = []
-    for split, idx_list in split_idx.items():
-        for i, j in enumerate(idx_list, start=1):
-            out_path = out_root / split / "images" / f"{i:06d}.jpg"
-            tasks.append((j, str(out_path)))
-
-    with Pool(processes=num_workers, initializer=_init_worker, initargs=(str(h5_file),)) as pool:
-        list(tqdm(pool.imap_unordered(_save_index, tasks), total=len(tasks), desc="Saving images"))
-
     for split, idx_list in split_idx.items():
         lbl_dir = out_root / split / "labels"
-        for i, j in enumerate(idx_list, start=1):
+        sorted_idx = sorted(idx_list)
+        for i, j in enumerate(sorted_idx, start=1):
             line = " ".join(str(int(x)) for x in labels[j].tolist())
             with open(lbl_dir / f"{i:06d}.txt", "w") as f:
                 f.write(line + "\n")
+
+    tasks = []
+    for split, idx_list in split_idx.items():
+        img_dir = out_root / split / "images"
+        sorted_idx = sorted(idx_list)
+        for i, j in enumerate(sorted_idx, start=1):
+            out_path = img_dir / f"{i:06d}.jpg"
+            tasks.append((j, str(out_path)))
+
+    with Pool(processes=num_workers, initializer=_init_worker, initargs=(str(h5_file),)) as pool:
+        list(tqdm(pool.imap_unordered(_save_index, tasks, chunksize=512), total=len(tasks), desc="Saving images"))
 
     data_cfg = {
         "train": str((out_root / "train" / "images").resolve()),
@@ -99,12 +102,12 @@ def clean_3dshapes(
 if __name__ == "__main__":
     raw_path = "data/00--raw/3dshapes"
     clean_path = "data/01--clean/3dshapes"
-    # download_3dshapes(raw_path)
+    download_3dshapes(raw_path)
     clean_3dshapes(
         input_dir=raw_path,
         output_dir=clean_path,
         train_ratio=0.8,
         val_ratio=0.1,
         seed=42,
-        num_workers=4
+        num_workers=6
     )

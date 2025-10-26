@@ -18,7 +18,7 @@ import pandas as pd
 from src.vae.config import TrainConfig, BetaVAEConfig
 from src.vae.beta_vae import BetaVAE
 from src.vae.dataset import ReconstructionDataset
-from src.vae.types import Context, GenLogits
+from src.vae.types import Context, GenLogits, GenTargets
 
 
 def _to_num(t: torch.Tensor) -> float: # robust .item() for bf16/fp16
@@ -158,7 +158,8 @@ class Trainer:
         )
         val_ds = ReconstructionDataset(
             data_cfg["val"], img_size=self.model_cfg.img_size,
-            channels=n_ch, augment=False
+            channels=n_ch, augment=False, 
+            supervision_cap=self.model_cfg.criterion.ssuper.cap
         )
 
         self.train_loader = DataLoader(
@@ -209,12 +210,12 @@ class Trainer:
         s_kld   = torch.zeros((), device=self.device)
         pbar = tqdm(self.train_loader, desc=f"Epoch {self.current_epoch}/{self.cfg.max_epochs} [Train]", leave=False)
 
-        for i, x in enumerate(pbar):
-            x = x.to(self.device, non_blocking=True)
+        for i, target in enumerate(pbar):
+            target = self._to_device_target(target)
             ctx: Context = {}  # neck writes mu/logvar here
 
-            logits: GenLogits = self.model(x, ctx)
-            losses = self.model.crit(logits, x, ctx)
+            logits: GenLogits = self.model(target.img, ctx)
+            losses = self.model.crit(logits, target, ctx)
 
             total = losses['loss']
             recon = losses['loss/recon']
@@ -227,7 +228,7 @@ class Trainer:
             if self.cfg.scheduler == "onecycle":
                 self.scheduler.step()
 
-            bs = x.size(0)
+            bs = target.img.size(0)
             s_total = s_total + total.detach() * bs
             s_recon = s_recon + recon.detach() * bs
             s_kld   = s_kld   + kld.detach()   * bs
@@ -263,17 +264,17 @@ class Trainer:
         pbar = tqdm(self.val_loader, desc=f"Epoch {self.current_epoch}/{self.cfg.max_epochs} [Val]", leave=False)
 
         with torch.no_grad():
-            for i, x in enumerate(pbar):
-                x = x.to(self.device, non_blocking=True)
+            for i, target in enumerate(pbar):
+                target = self._to_device_target(target)
                 ctx: Context = {}
-                logits: GenLogits = self.model(x, ctx)
-                losses = self.model.crit(logits, x, ctx)
+                logits: GenLogits = self.model(target.img, ctx)
+                losses = self.model.crit(logits, target, ctx)
 
                 total = losses['loss']
                 recon = losses['loss/recon']
                 kld   = losses['loss/kld']
 
-                bs = x.size(0)
+                bs = target.img.size(0)
                 s_total = s_total + total * bs
                 s_recon = s_recon + recon * bs
                 s_kld   = s_kld   + kld   * bs
@@ -297,6 +298,16 @@ class Trainer:
             'kld_image'   : kld_mean,
             'kld_dim'     : kld_mean / ld,
         }
+    
+    def _to_device_target(self, gt: GenTargets):
+        img = gt.img.to(self.device, non_blocking=True)
+        meta = gt.meta
+        if isinstance(meta, dict) and "labels" in meta:
+            lab = meta["labels"]
+            if not torch.is_tensor(lab):
+                lab = torch.from_numpy(lab) if hasattr(lab, "dtype") else torch.tensor(lab)
+            meta = {**meta, "labels": lab.to(self.device, non_blocking=True)}
+        return gt._replace(img=img, meta=meta)
 
 
     def save_checkpoint(self, is_best: bool = False, is_last: bool = False):

@@ -9,23 +9,23 @@ def main():
 
 
     enc = CNNEncoderConfig(
-        in_channels = 3,
+        in_channels  = 3,
         channels     = [  64, 128, 192, 256],
         kernels      = [   4,   4,   4,   4],
         strides      = [   2,   2,   2,   2],
         paddings     = [   1,   1,   1,   1],
-        activation  = "relu",
-        norm_type   = "none",
+        activation   = "relu",
+        norm_type    = "none",
     )
 
 
     neck = GaussianNeckConfig(
-        latent_dim  = 64,
-        fc_layers   = 2,
-        fc_units    = 512,
-        norm_type   = "relu",
-        activation  = "none",
-        free_nats   = 0.5,
+        latent_dim   = 64,
+        fc_layers    = 2,
+        fc_units     = 512,
+        norm_type    = "relu",
+        activation   = "none",
+        free_nats    = 0.5,
     )
 
     dec = CNNDecoderConfig(
@@ -52,19 +52,10 @@ def main():
         huber_delta  = 1.0,
     )
 
-    mdl = MDLReconConfig(
-        K            = 10
-    )
-
-    ssuper = SemiSupervisedConfig(
-        supervision_rate = 
-    )
-
     criterion = BetaVAECriterionConfig(
         beta         = 5.0,
         perc         = perc,
-        recon        = gauss,
-        ssuper       = ssuper
+        recon        = gauss
     )
 
     vae_cfg = BetaVAEConfig(
@@ -90,7 +81,7 @@ def main():
         num_workers      = 4,
         data_yaml        = "data/01--clean/celebA/data.yaml",
         project_name     = "celebA-vae",
-        experiment_name  = "beta5",
+        experiment_name  = "beta5-perc",
     )
 
     Trainer.run(model_cfg=vae_cfg, train_cfg=train_cfg, resume=False)

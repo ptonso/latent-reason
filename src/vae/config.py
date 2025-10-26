@@ -44,26 +44,27 @@ class MDLReconConfig:
 
 @dataclass
 class PerceptualConfig:
-    pix_weight:  float                             = 1.0
-    perc_weight: float                             = 1.0
-    use_l1: bool                                   = True
-    source: Literal["none", "lpips", "encoder"]    = "none"
-    lpips_net: Literal["alex", "vgg", "squeeze"]   = "alex"
-    enc_layers: Optional[Mapping[str, float]]      = None
+    pix_weight:    float    = 1.0
+    perc_weight:   float    = 1.0
+    use_l1:        bool     = True
+    source:     Literal["none", "lpips", "encoder"] = "none"
+    lpips_net:  Literal["alex", "vgg", "squeeze"]   = "alex"
+    enc_layers: Optional[Mapping[str, float]]       = None
 
 @dataclass
 class SemiSupervisedConfig:
-    ...
+    cap:         float      = 0.0
+    weight:      float      = 1.0
 
 @dataclass
 class BetaVAECriterionConfig:
     beta: float = 2.0
     perc: PerceptualConfig = field(default_factory=PerceptualConfig)
+    ssuper: SemiSupervisedConfig = field(default_factory=SemiSupervisedConfig)
     recon: Union[
         GaussianReconConfig,
         MDLReconConfig
      ] = field(default_factory=GaussianReconConfig)
-    ssuper: SemiSupervisedConfig = field(default_factory=SemiSupervisedConfig)
     
 
 @dataclass

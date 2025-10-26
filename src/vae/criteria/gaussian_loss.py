@@ -33,7 +33,6 @@ class GaussianRecon(nn.Module):
 
     @torch.no_grad
     def mean_image(self, logits: GenLogits, ctx: Optional[Context] = None):
+        """decoder outputs logits; tanh -> [-1,1], which is what LPIPS expects"""
         hatx = torch.tanh(logits.img)
-        return [(hatx + 1.0) * 0.5]
-
-
+        return hatx

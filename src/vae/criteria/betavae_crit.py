@@ -31,9 +31,8 @@ class BetaVAECriterion(BaseCriterion):
         elif isinstance(cfg.recon, MDLReconConfig):
             self.inner = MDLRecon(cfg.recon)
 
-        self.perc = PerceptualLoss(cfg.perc)
-
-        self.supervision = SemiSupervisedLoss(cfg.ssuper)
+        self.perc   = PerceptualLoss(cfg.perc)
+        self.ssuper = SemiSupervisedLoss(cfg.ssuper)
 
     def init_perc(
         self,
@@ -42,8 +41,8 @@ class BetaVAECriterion(BaseCriterion):
         encoder: Optional[nn.Module] = None,
         features_fn: Optional[Callable[[Tensor], Dict[str, Tensor]]] = None,
     ) -> None:
+        """External api"""
         self.perc.init(device=device, encoder=encoder, features_fn=features_fn)
-
 
     @staticmethod
     def _kld(mu: Tensor, logvar: Tensor, free_nats: float) -> Tensor:
@@ -51,8 +50,8 @@ class BetaVAECriterion(BaseCriterion):
         kl = torch.clamp(kl - free_nats, min=0.0)
         return kl.sum(1).mean()
 
-    def _mean_image_for_perc(self, logits_img: Tensor) -> Tensor:
-        return self.inner.mean_image(logits_img)
+    def _mean_image_for_perc(self, logits: GenLogits) -> Tensor:
+        return self.inner.mean_image(logits)
 
     def forward(self, logits: GenLogits, target: GenTargets, ctx: Optional[Context] = None) -> LossDict:
         x = target.img if hasattr(target, "img") else target
@@ -63,32 +62,29 @@ class BetaVAECriterion(BaseCriterion):
 
         # perceptual term
         if self.perc.enabled:
-            if isinstance(self.inner, MDLRecon):
-                with torch.no_grad():
-                    hatx = self._mean_image_for_perc(logits.img)
-            else:
-                hatx = self._mean_image_for_perc(logits.img)
+            hatx = self._mean_image_for_perc(logits)
             perc_term = self.perc(hatx, x)
             rec = rec + float(self.cfg.perc.perc_weight) * perc_term
+        
+        # Semisupervised term
+        ssuper = logits.img.new_zeros(())
+        labels = None
+        if hasattr(target, "meta") and isinstance(target.meta, dict):
+            labels = target.meta.get("labels", None)
+        ssuper = self.ssuper(ctx["mu"], labels)
 
         # KL term
         if ctx is None or ("mu" not in ctx or "logvar" not in ctx):
             z = torch.zeros((), device=logits.img.device)
             return {"loss": rec, "loss/recon": rec, "loss/kld": z}
-        
-        # Semisupervised term
-        if self.supervision.enabled:
-            semisupervised_loss = self.supervision(
-                ctx["mu"], target["labels"], target["is_labeld"]
-                )
-
         kld = self._kld(ctx["mu"], ctx["logvar"], ctx.get("free_n", 0.0))
-        total = rec + self.beta * kld + semisupervised_loss
-        return {"loss": total, "loss/recon": rec, "loss/kld": kld}
+
+        total = rec + self.beta * kld + ssuper
+        return {"loss": total, "loss/recon": rec, "loss/kld": kld, "loss/ssuper": ssuper}
 
 
     @torch.no_grad()
     def predict(self, logits: GenLogits, ctx: Optional[Context] = None):
         """Map to [0,1] for visualization."""
-        hatx = self._mean_image_for_perc(logits.img)
+        hatx = self._mean_image_for_perc(logits)
         return [(hatx + 1.0) * 0.5]

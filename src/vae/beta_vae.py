@@ -9,7 +9,7 @@ from torch import Tensor
 from src.vae.cnn_encoder import CNNEncoder, CNNEncoderConfig
 from src.vae.cnn_decoder import CNNDecoder, CNNDecoderConfig
 from src.vae.gaussian_neck import GaussianNeckConfig, GaussianNeck
-from src.vae.criteria.betavae_loss import BetaVAECriterion
+from src.vae.criteria.betavae_crit import BetaVAECriterion
 from src.vae.types import GenLogits, Context, FeatureDict, ModelBatch
 from src.vae.config import *
 

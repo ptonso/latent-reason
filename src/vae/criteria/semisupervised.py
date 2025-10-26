@@ -12,24 +12,19 @@ class SemiSupervisedLoss(nn.Module):
     Latent-wise binary cross entropy in mu
     """
     def __init__(self, cfg: SemiSupervisedConfig):
+        super().__init__()
         self.cfg = cfg
+        self.weights = cfg.weight
+
+    def active(self, labels) -> bool:
+        return self.cfg.cap > 0 and labels is not None
     
-    def __call__(
-        self, 
-        mu: torch.Tensor, 
-        labels: torch.Tensor, 
-        is_labeled: torch.Tensor
-        ) -> torch.Tensor:
-
-        mask = torch.tensor(is_labeled, device=mu.device)
-
-        if mask.sum() > 0:
-            mu_labeled = mu[mask]
-            masked_labels = labels[mask]
-            BCE_loss = torch.nn.BCEWithLogitsLoss()
-            semisuper_loss = BCE_loss(mu_labeled, masked_labels)
-        else:
-            semisuper_loss = torch.tensor(0., device=mu.device)
-
-        return semisuper_loss
+    def forward(self, mu: Tensor, labels: Tensor | None) -> Tensor:
+        if not self.active(labels):
+            return mu.new_zeros(())
+        labels = labels.float()
+        if mu.size(1) != labels.size(1):
+            mu = mu[:, :labels.size(1)]
+        loss = F.binary_cross_entropy_with_logits(mu, labels, reduction="mean")
+        return loss * self.weight
 

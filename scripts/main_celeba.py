@@ -9,23 +9,23 @@ def main():
 
 
     enc = CNNEncoderConfig(
-        in_channels = 3,
+        in_channels  = 3,
         channels     = [  64, 128, 192, 256],
         kernels      = [   4,   4,   4,   4],
         strides      = [   2,   2,   2,   2],
         paddings     = [   1,   1,   1,   1],
-        activation  = "relu",
-        norm_type   = "none",
+        activation   = "relu",
+        norm_type    = "none",
     )
 
 
     neck = GaussianNeckConfig(
-        latent_dim  = 64,
-        fc_layers   = 2,
-        fc_units    = 512,
-        norm_type   = "relu",
-        activation  = "none",
-        free_nats   = 0.5,
+        latent_dim   = 64,
+        fc_layers    = 2,
+        fc_units     = 512,
+        norm_type    = "relu",
+        activation   = "none",
+        free_nats    = 0.5,
     )
 
     dec = CNNDecoderConfig(
@@ -38,38 +38,24 @@ def main():
         norm_type    = "none",
     )
 
-
-    perc = PerceptualConfig(
-        source       = "lpips",
-        perc_weight  = 1.0,
-        pix_weight   = 1.0,
-        use_l1       = True,
-        lpips_net    = "alex",
-    )
-
     gauss = GaussianReconConfig(
         recon_type   = "l2",
         huber_delta  = 1.0,
     )
 
-    mdl = MDLReconConfig(
-        K            = 10
-    )
-
     criterion = BetaVAECriterionConfig(
         beta         = 5.0,
-        perc         = perc,
-        recon        = gauss
+        recon        = gauss,
     )
 
     vae_cfg = BetaVAEConfig(
-        img_size  = 64,
-        enc_name  = "s32",
-        neck_name = "z",
-        encoder   = enc,
-        neck      = neck,
-        decoder   = dec,
-        criterion = criterion,
+        img_size     = 64,
+        enc_name     = "s32",
+        neck_name    = "z",
+        encoder      = enc,
+        neck         = neck,
+        decoder      = dec,
+        criterion    = criterion,
     )
 
 
