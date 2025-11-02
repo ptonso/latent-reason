@@ -75,8 +75,9 @@ class BetaVAE(nn.Module):
         feats = self.neck(feats, ctx)
         return self.dec(feats, ctx)
 
-
-    def encode(self, x: Tensor, ctx: Context = {}) -> tuple[Tensor, Tensor]:
+    def encode(self, x: Tensor, ctx: Context | None = None) -> tuple[Tensor, Tensor]:
+        if ctx is None:
+            ctx = {}
         _ = self.neck(self.enc(x, None), ctx)
         return ctx["mu"], ctx["logvar"]
 
@@ -91,10 +92,11 @@ class BetaVAE(nn.Module):
 
 
     def decode_from_z(self, z: Tensor) -> GenLogits:
-        zero = torch.zeros_like(z)
-        feats = {self.neck_name: self.neck.mlp_dec(torch.cat([z, zero], dim=1)).view(
-            z.size(0), self.enc.out_channels()[self.enc_name], self.enc.out_h, self.enc.out_w
-        )}
+        z = z.to(self.device)
+        feat_flat = self.neck.mlp_dec(z)
+        C = self.enc.out_channels()[self.enc_name]
+        H, W = self.enc.out_h, self.enc.out_w
+        feats: Dict[str, Tensor] = {self.neck_name: feat_flat.view(z.size(0), C, H, W)}
         return self.dec(feats, None)
 
     

@@ -19,6 +19,7 @@ from src.vae.config import TrainConfig, BetaVAEConfig
 from src.vae.beta_vae import BetaVAE
 from src.vae.dataset import ReconstructionDataset
 from src.vae.types import Context, GenLogits, GenTargets
+from src.vae.hydra_io import save_yaml
 
 
 def _to_num(t: torch.Tensor) -> float: # robust .item() for bf16/fp16
@@ -186,14 +187,12 @@ class Trainer:
             return obj.__class__.__name__
         return obj
 
+
     def save_configs(self):
-        with open(self.run_dir / "train_config.json", "w") as f:
-            json.dump(self.dataclass_to_dict(self.cfg), f, indent=2)
-        with open(self.run_dir / "model_config.json", "w") as f:
-            json.dump(self.dataclass_to_dict(self.model_cfg), f, indent=2)
-        with open(self.cfg.data_yaml, "r") as src, \
-             open(self.run_dir / "data_config.yaml", "w") as dst:
-            yaml.dump(yaml.safe_load(src), dst)
+        save_yaml(self.run_dir / "train_config.yaml", self.cfg)
+        save_yaml(self.run_dir / "model_config.yaml", self.model_cfg)
+        with open(self.cfg.data_yaml, "r") as src, open(self.run_dir / "data_config.yaml", "w") as dst:
+            yaml.safe_dump(yaml.safe_load(src), dst, sort_keys=False)
 
 
     def train_epoch(self) -> Dict[str, float]:

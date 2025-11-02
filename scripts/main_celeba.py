@@ -62,7 +62,7 @@ def main():
     train_cfg = TrainConfig(
         lr               = 1e-4,
         batch_size       = 512,
-        max_epochs       = 100,
+        max_epochs       = 2,
         beta_warmup      = 20,
         patience         = 10,
         optimizer_type   = "adamw",
@@ -71,7 +71,7 @@ def main():
         num_workers      = 4,
         data_yaml        = "data/01--clean/celebA/data.yaml",
         project_name     = "celebA-vae",
-        experiment_name  = "beta5",
+        experiment_name  = "beta5-test",
     )
 
     Trainer.run(model_cfg=vae_cfg, train_cfg=train_cfg, resume=False)
