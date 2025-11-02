@@ -274,3 +274,67 @@ if __name__ == "__main__":
 
     print("\n== PCA traversal ==")
     pca_traverse(vae, val_loader, device, n_pcs=3)
+
+
+def posterior_histogram(
+    mu: np.ndarray,
+    max_dims: Optional[int] = None,
+    bins: int = 50,
+    xlim: Tuple[float, float] = (-4.0, 4.0),
+    ymax: float = 0.8,
+) -> None:
+    d_total = mu.shape[1]
+    d = d_total if max_dims is None else min(max_dims, d_total)
+    dims = list(range(d))
+
+    max_density: float = 0.0
+    hists: dict[int, Tuple[np.ndarray, np.ndarray]] = {}
+
+    for dim in dims:
+        counts, edges = np.histogram(mu[:, dim], bins=bins, range=xlim, density=True)
+        hists[dim] = (counts, edges)
+        max_density = min(ymax, max(max_density, float(counts.max())))
+
+    cols = min(4, len(dims))
+    rows = (len(dims) + cols - 1) // cols
+    fig, axes = plt.subplots(rows, cols, figsize=(cols * 3, rows * 2.5))
+    axes = np.atleast_1d(axes).ravel()
+
+    x = np.linspace(xlim[0], xlim[1], 1000)
+    pdf = np.exp(-0.5 * x**2) / np.sqrt(2.0 * np.pi)
+
+    for i, dim in enumerate(dims):
+        ax = axes[i]
+        counts, edges = hists[dim]
+        centers = (edges[:-1] + edges[1:]) / 2.0
+        ax.bar(centers, counts, width=(edges[1] - edges[0]), alpha=0.6, label="empirical")
+        ax.plot(x, pdf, linestyle="--", label="N(0,1)")
+        ax.set_xlim(*xlim)
+        ax.set_ylim(0.0, max_density * 1.05)
+        ax.set_title(f"dim {dim}")
+        ax.legend(fontsize=6)
+
+    for ax in axes[len(dims):]:
+        fig.delaxes(ax)
+
+    plt.tight_layout()
+    plt.show()
+
+
+def plot_latent_stats_heatmap(stats: LatentStats) -> None:
+    arr: np.ndarray = np.stack([stats.mu_mean, stats.mu_var, stats.kl_mean], axis=0)
+    labels: Sequence[str] = ("μ mean", "μ var", "KL avg")
+    d: int = arr.shape[1]
+
+    fig, ax = plt.subplots(figsize=(max(8, d * 0.2), 3))
+    im = ax.imshow(arr, aspect="auto", cmap="viridis")
+    ax.set_yticks(np.arange(len(labels)))
+    ax.set_yticklabels(labels)
+    ax.set_xticks(np.arange(d))
+    ax.set_xticklabels(np.arange(d), rotation=90, fontsize=6)
+    ax.set_xlabel("latent dimension")
+    ax.set_title("Latent-space statistics heatmap")
+    cbar = fig.colorbar(im, ax=ax, orientation="vertical", fraction=0.05)
+    cbar.ax.set_ylabel("value", rotation=270, labelpad=10)
+    plt.tight_layout()
+    plt.show()
