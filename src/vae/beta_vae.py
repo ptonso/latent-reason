@@ -102,8 +102,8 @@ class BetaVAE(nn.Module):
     
     def decode_prob(self, z: Tensor) -> Tensor:
         """map Tanh output in [-1,1] to [0,1]"""
-        imgs = self.decode_from_z(z).img
-        return imgs.mul_(0.5).add_(0.5).clamp_(0, 1)
+        dec_out = self.decode_from_z(z)
+        return self.crit.predict(dec_out)[0]
 
 
     def decode_uint8(self, z: Tensor) -> Tensor:

@@ -47,7 +47,7 @@ class CNNDecoder(BaseDecoder):
     def _shape_check(self):
         with torch.no_grad():
             x = torch.zeros(1, self.in_ch, self.in_h, self.in_w)
-            y = self.forward({self.in_name: x}, None).img
+            y = self.forward({self.in_name: x}, None).params
             if y.shape[-2:] != (self.out_h, self.out_w):
                 raise ValueError(f"decoder output {y.shape[-2:]} != target {(self.out_h, self.out_w)}")
 
@@ -55,8 +55,8 @@ class CNNDecoder(BaseDecoder):
         return {self.in_name: -1}
 
     def forward(self, feats: FeatureDict, ctx: Optional[Context] = None) -> GenLogits:
-        x   = feats[self.in_name]  # (B, C, H, W) from neck
-        img = self.deconv(x)
-        return GenLogits(img=img, meta={})
+        neck_out = feats[self.in_name]  # (B, C, H, W)
+        params   = self.deconv(neck_out)
+        return GenLogits(params=params, meta={})
 
 

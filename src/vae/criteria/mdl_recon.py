@@ -90,10 +90,9 @@ class MDLRecon(nn.Module):
         return nll
 
 
-
     @torch.no_grad()
-    def mean_image(self, params: Tensor) -> Tensor:
-        pi_logits, means, _ = self._split_params(params)
+    def mean_image(self, logits: GenLogits) -> Tensor:
+        pi_logits, means, _ = self._split_params(logits.params)
         pi = torch.softmax(pi_logits, dim=1)  # (B,K,H,W)
         return (pi.unsqueeze(1) * means).sum(dim=2).clamp(-1, 1)  # (B,3,H,W)
 

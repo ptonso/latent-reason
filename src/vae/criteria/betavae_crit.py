@@ -8,10 +8,10 @@ from torch import Tensor
 from src.vae.types import GenLogits, GenTargets, Context
 from src.vae.base import BaseCriterion, LossDict
 
-from src.vae.criteria.gaussian_loss import GaussianRecon
-from src.vae.criteria.mdl_loss import MDLRecon
-from src.vae.criteria.perceptual import PerceptualLoss
-from src.vae.criteria.semisupervised import SemiSupervisedLoss
+from src.vae.criteria.gaussian_recon import GaussianRecon
+from src.vae.criteria.mdl_recon import MDLRecon
+from src.vae.criteria.perceptual_loss import PerceptualLoss
+from src.vae.criteria.ssemi_loss import SemiSupervisedLoss
 from src.vae.config import BetaVAECriterionConfig, GaussianReconConfig, MDLReconConfig
 
 
@@ -50,24 +50,21 @@ class BetaVAECriterion(BaseCriterion):
         kl = torch.clamp(kl - free_nats, min=0.0)
         return kl.sum(1).mean()
 
-    def _mean_image_for_perc(self, logits: GenLogits) -> Tensor:
-        return self.inner.mean_image(logits)
-
     def forward(self, logits: GenLogits, target: GenTargets, ctx: Optional[Context] = None) -> LossDict:
         x = target.img if hasattr(target, "img") else target
 
         # recon term
-        recon = self.inner.recon_loss(logits.img, x)
+        recon = self.inner.recon_loss(logits.params, x)
         rec = float(self.cfg.perc.pix_weight) * recon
 
         # perceptual term
         if self.perc.enabled:
-            hatx = self._mean_image_for_perc(logits)
+            hatx = self.inner.mean_image(logits)
             perc_term = self.perc(hatx, x)
             rec = rec + float(self.cfg.perc.perc_weight) * perc_term
         
         # Semisupervised term
-        ssuper = logits.img.new_zeros(())
+        ssuper = logits.params.new_zeros(())
         labels = None
         if hasattr(target, "meta") and isinstance(target.meta, dict):
             labels = target.meta.get("labels", None)
@@ -75,7 +72,7 @@ class BetaVAECriterion(BaseCriterion):
 
         # KL term
         if ctx is None or ("mu" not in ctx or "logvar" not in ctx):
-            z = torch.zeros((), device=logits.img.device)
+            z = torch.zeros((), device=logits.params.device)
             return {"loss": rec, "loss/recon": rec, "loss/kld": z}
         kld = self._kld(ctx["mu"], ctx["logvar"], ctx.get("free_n", 0.0))
 
@@ -86,5 +83,5 @@ class BetaVAECriterion(BaseCriterion):
     @torch.no_grad()
     def predict(self, logits: GenLogits, ctx: Optional[Context] = None):
         """Map to [0,1] for visualization."""
-        hatx = self._mean_image_for_perc(logits)
-        return [(hatx + 1.0) * 0.5]
+        hatx = self.inner.mean_image(logits)
+        return [hatx.mul(0.5).add(0.5).clamp(0.0, 1.0)]
