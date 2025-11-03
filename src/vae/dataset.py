@@ -1,9 +1,8 @@
 from pathlib import Path
-from typing import List, Tuple, Optional, Union, Dict
+from typing import List, Optional, Union, Dict
 from PIL import Image
 import yaml
 import numpy as np
-import torch
 from torch.utils.data import Dataset
 from torchvision import transforms
 

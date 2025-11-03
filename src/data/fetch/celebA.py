@@ -1,8 +1,6 @@
 import csv, shutil
 import yaml
 from pathlib import Path
-from typing import Dict
-
 
 from kaggle.api.kaggle_api_extended import KaggleApi
 

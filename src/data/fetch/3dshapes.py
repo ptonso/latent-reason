@@ -1,4 +1,3 @@
-import os
 import random
 import requests
 from pathlib import Path
@@ -7,7 +6,6 @@ import h5py
 from PIL import Image
 import yaml
 from tqdm.auto import tqdm
-import numpy as np
 
 FACTORS = ["floor_hue", "wall_hue", "object_hue", "scale", "shape", "orientation"]
 
@@ -72,7 +70,7 @@ def clean_3dshapes(
         lbl_dir = out_root / split / "labels"
         sorted_idx = sorted(idx_list)
         for i, j in enumerate(sorted_idx, start=1):
-            line = " ".join(str(int(x)) for x in labels[j].tolist())
+            line = " ".join(str(x) for x in labels[j].tolist())
             with open(lbl_dir / f"{i:06d}.txt", "w") as f:
                 f.write(line + "\n")
 
@@ -88,12 +86,12 @@ def clean_3dshapes(
         list(tqdm(pool.imap_unordered(_save_index, tasks, chunksize=512), total=len(tasks), desc="Saving images"))
 
     data_cfg = {
-        "train": str((out_root / "train" / "images").resolve()),
-        "val": str((out_root / "val" / "images").resolve()),
-        "test": str((out_root / "test" / "images").resolve()),
-        "train_labels": str((out_root / "train" / "labels").resolve()),
-        "val_labels": str((out_root / "val" / "labels").resolve()),
-        "test_labels": str((out_root / "test" / "labels").resolve()),
+        "train": str((out_root / "train" / "images")),
+        "val": str((out_root / "val" / "images")),
+        "test": str((out_root / "test" / "images")),
+        "train_labels": str((out_root / "train" / "labels")),
+        "val_labels": str((out_root / "val" / "labels")),
+        "test_labels": str((out_root / "test" / "labels")),
         "factors": FACTORS,
     }
     with open(out_root / "data.yaml", "w") as f:
